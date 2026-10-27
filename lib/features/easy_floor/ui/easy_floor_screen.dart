@@ -256,7 +256,9 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
                                 projectToSegment(p, base.corners[w.start]!,
                                     base.corners[w.end]!))
                             .length <
-                        .001)))) return connected;
+                        .001)))) {
+      return connected;
+    }
     final incident = {
       for (final w in base.walls.values)
         if (w.start == excludeCorner || w.end == excludeCorner) w.id
@@ -1200,10 +1202,13 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
       _pointerDown = null;
       _stroke = [];
       _preview = _suggestion != null ? List.of(_originalShape) : [];
-      if (_selectedWall != null && !_model.walls.containsKey(_selectedWall))
+      if (_selectedWall != null && !_model.walls.containsKey(_selectedWall)) {
         _selectedWall = null;
+      }
       if (_selectedCorner != null &&
-          !_model.corners.containsKey(_selectedCorner)) _selectedCorner = null;
+          !_model.corners.containsKey(_selectedCorner)) {
+        _selectedCorner = null;
+      }
     });
   }
 
@@ -1269,8 +1274,10 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
           _presetAnchor = p;
           _preview = _preset!.points(p);
         } else {
-          if (_polygonPoints.isEmpty || (p - _polygonPoints.last).length >= 10)
+          if (_polygonPoints.isEmpty ||
+              (p - _polygonPoints.last).length >= 10) {
             _polygonPoints.add(p);
+          }
           _preview = List.of(_polygonPoints);
         }
       });

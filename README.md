@@ -9,7 +9,7 @@ Android, macOS and web platform folders included.
 | Tool | What it does |
 | --- | --- |
 | Grid Ceiling | Calculates rectangular-room grid placement, tile purchases, T sections and wall angles; shows material estimates and 2D/3D layouts. |
-| PVC Ceiling | Plans PVC panels for rectangular and supported irregular rooms, with stock cutting, quantities and layout previews. |
+| PVC Ceiling | Plans PVC panels for rectangular and supported irregular rooms, prioritizing fewer joints before stock savings, with cutting quantities and layout previews. |
 | EasyFloor | Draws and edits connected floor-plan walls with dimensions, presets, notes, snapping, tape measurement and proposed dashed walls. Supports local drawing documents. |
 | Unit Converter | Converts lengths between supported metric and imperial units, updating all units together. |
 | Area Converter | Converts square measurements between supported metric and imperial units. |

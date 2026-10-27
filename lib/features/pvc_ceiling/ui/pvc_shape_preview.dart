@@ -2,10 +2,17 @@ part of 'pvc_ceiling_painter.dart';
 
 class PvcShapePreview extends StatelessWidget {
   const PvcShapePreview(
-      {super.key, required this.room, this.active, this.thumbnail = false});
+      {super.key,
+      required this.room,
+      this.active,
+      this.thumbnail = false,
+      this.joint,
+      this.orientation = PvcOrientation.length});
   final PvcRoom room;
   final String? active;
   final bool thumbnail;
+  final double? joint;
+  final PvcOrientation orientation;
   @override
   Widget build(BuildContext context) => LayoutBuilder(builder: (context, box) {
         final available = MediaQuery.sizeOf(context).height -
@@ -14,29 +21,50 @@ class PvcShapePreview extends StatelessWidget {
         final height =
             thumbnail ? 88.0 : (box.maxWidth * .4).clamp(110.0, maxHeight);
         final textScale = MediaQuery.textScalerOf(context).scale(13) / 13;
+        final bounds = pvcBounds(room.points);
+        final alongLength = orientation == PvcOrientation.length;
+        final start = alongLength ? bounds.x0 : bounds.y0;
+        final run = alongLength ? bounds.width : bounds.height;
         return Semantics(
             label:
                 '${room.shape.label} dimension diagram. Letters match the input fields.',
-            child: SizedBox(
-                height: height,
-                width: double.infinity,
-                child: CustomPaint(
-                    painter: PvcShapePreviewPainter(room, active,
-                        textScale: textScale, thumbnail: thumbnail))));
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              SizedBox(
+                  height: height,
+                  width: double.infinity,
+                  child: CustomPaint(
+                      painter: PvcShapePreviewPainter(room, active,
+                          joint: joint,
+                          orientation: orientation,
+                          textScale: textScale,
+                          thumbnail: thumbnail))),
+              if (joint != null)
+                Text(
+                    'From ${alongLength ? "left" : "top"}: ${fmt(joint! - start)} ft · '
+                    'From ${alongLength ? "right" : "bottom"}: ${fmt(run - (joint! - start))} ft',
+                    key: const ValueKey('pvcJointPreviewPosition'),
+                    textAlign: TextAlign.center,
+                    style: AppTypography.text14Greymuted),
+            ]));
       });
 }
 
 class PvcShapePreviewPainter extends CustomPainter {
   PvcShapePreviewPainter(this.room, this.active,
-      {double textScale = 1, this.thumbnail = false})
+      {double textScale = 1,
+      this.thumbnail = false,
+      this.joint,
+      this.orientation = PvcOrientation.length})
       : textScale = textScale.clamp(1, 1.5);
   final PvcRoom room;
   final String? active;
   final double textScale;
   final bool thumbnail;
+  final double? joint;
+  final PvcOrientation orientation;
   double get radius => (thumbnail ? 7 : 12) * textScale;
 
-  List<Offset> _points(Size size) {
+  List<Offset> _points(Size size, [List<PvcPoint>? source]) {
     final b = pvcBounds(room.points), padding = radius + (thumbnail ? 12 : 20);
     final scale = math.max(
         0.0,
@@ -44,7 +72,7 @@ class PvcShapePreviewPainter extends CustomPainter {
             (size.height - padding * 2) / b.height));
     final origin = Offset((size.width - b.width * scale) / 2,
         (size.height - b.height * scale) / 2);
-    return room.points
+    return (source ?? room.points)
         .map((p) => origin + Offset((p.x - b.x0) * scale, (p.y - b.y0) * scale))
         .toList();
   }
@@ -105,6 +133,20 @@ class PvcShapePreviewPainter extends CustomPainter {
     final points = _points(size), path = Path()..addPolygon(points, true);
     canvas.drawPath(path, _fill(AppColors.softSurface));
     canvas.drawPath(path, _stroke(AppColors.ink, 2));
+    if (joint != null) {
+      final b = pvcBounds(room.points);
+      final ends = _points(
+          size,
+          orientation == PvcOrientation.length
+              ? [pvcPoint(joint!, b.y0), pvcPoint(joint!, b.y0 + b.height)]
+              : [pvcPoint(b.x0, joint!), pvcPoint(b.x0 + b.width, joint!)]);
+      canvas.save();
+      _dashLine(canvas, ends[0], ends[1],
+          _stroke(AppColors.pvcJoint.withValues(alpha: .4), 1));
+      canvas.clipPath(path);
+      _dashLine(canvas, ends[0], ends[1], _stroke(AppColors.pvcJoint, 2));
+      canvas.restore();
+    }
     final labels = labelCenters(size);
     for (final entry in room.edges.entries) {
       final a = points[entry.value.$1],
@@ -133,5 +175,7 @@ class PvcShapePreviewPainter extends CustomPainter {
       old.room != room ||
       old.active != active ||
       old.textScale != textScale ||
-      old.thumbnail != thumbnail;
+      old.thumbnail != thumbnail ||
+      old.joint != joint ||
+      old.orientation != orientation;
 }

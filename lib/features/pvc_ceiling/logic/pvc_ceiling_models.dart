@@ -1,5 +1,19 @@
 import 'pvc_room.dart';
 
+enum PvcOrientation { automatic, length, width }
+
+enum PvcJointMode { automatic, centre, custom }
+
+class PvcJointRule {
+  const PvcJointRule(
+      {this.mode = PvcJointMode.automatic,
+      this.distanceFt,
+      this.fromEnd = false});
+  final PvcJointMode mode;
+  final double? distanceFt;
+  final bool fromEnd;
+}
+
 class PvcPlankSegment {
   const PvcPlankSegment(this.x0, this.x1, this.pieces);
   final double x0, x1;
@@ -52,6 +66,7 @@ class Layout {
   final List<PvcPoint> polygon;
   final List<PvcPlankRow> layoutRows;
   final double pieceTotal;
+  final double? alignedJoint;
 
   const Layout({
     required this.dir,
@@ -67,6 +82,7 @@ class Layout {
     required this.polygon,
     required this.layoutRows,
     required this.pieceTotal,
+    this.alignedJoint,
   });
 
   int get count => plan.length;

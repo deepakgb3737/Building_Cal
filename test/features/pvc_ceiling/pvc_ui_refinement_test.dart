@@ -153,7 +153,9 @@ void main() {
     await board.calculate(t);
     expect(t.getRect(find.text('What to buy')).top, inInclusiveRange(50, 250));
     final result = t.widget<PvcCeilingResults>(find.byType(PvcCeilingResults));
-    expect(result.layout!.total, 168);
+    expect(result.layout!.total, 178);
+    expect(result.layout!.joints, 0);
+    expect(find.textContaining('0 joints'), findsOneWidget);
     final field = find.byType(TextFormField).at(3);
     await t.ensureVisible(field);
     await t.enterText(field, '99');

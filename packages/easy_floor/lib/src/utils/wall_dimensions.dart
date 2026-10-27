@@ -19,8 +19,9 @@ abstract final class WallDimensions {
     final start = points[index];
     final end = points[next];
     final direction = end - start;
-    if (direction.distance < .001)
+    if (direction.distance < .001) {
       throw ArgumentError('This wall has no length.');
+    }
     final moved = start + direction / direction.distance * (lengthMm / 10);
     final delta = moved - end;
     final horizontal = direction.dy.abs() < .001;
@@ -44,9 +45,12 @@ abstract final class WallDimensions {
         index < 0 ||
         index >= points.length ||
         !delta.dx.isFinite ||
-        !delta.dy.isFinite) throw ArgumentError('Select a room corner.');
-    if (doors.any((door) => door.roomId == room.id))
+        !delta.dy.isFinite) {
+      throw ArgumentError('Select a room corner.');
+    }
+    if (doors.any((door) => door.roomId == room.id)) {
       throw ArgumentError('Remove doors before reshaping walls.');
+    }
     _apply(room, [
       for (var i = 0; i < points.length; i++)
         i == index ? points[i] + delta : points[i]

@@ -5,11 +5,11 @@ import 'package:grid_ceiling_calculator/features/pvc_ceiling/logic/pvc_ceiling_c
 
 void main() {
   final reference = jsonDecode(
-      File('test/features/pvc_ceiling/fixtures/multi_layout_reference.json')
+      File('test/features/pvc_ceiling/fixtures/joint_first_layouts.json')
           .readAsStringSync()) as List;
   for (var i = 0; i < PvcShape.values.length; i++) {
     final shape = PvcShape.values[i], expected = reference[i] as Map;
-    test('${shape.label}: supplied reference and complete cut demand', () {
+    test('${shape.label}: joint-first layout and complete cut demand', () {
       final room = buildPvcRoom(shape, pvcDefaults(shape));
       final r = runPvcCalculation(PvcCalculation(room, 'mix'))!;
       expect(room.area, expected['area']);
@@ -20,13 +20,8 @@ void main() {
       expect(r.q10, expected['q10']);
       expect(r.q12, expected['q12']);
       expect(r.joints, expected['joints']);
-      if (shape != PvcShape.angled && shape != PvcShape.cutCorner) {
-        expect(r.sizes, expected['sizes']);
-        expect(r.pieceTotal, expected['pieceTotal']);
-      } else {
-        // HTML sampled 0.01 ft inside row edges; exact envelopes need more cover.
-        expect(r.pieceTotal, greaterThan(expected['pieceTotal'] as num));
-      }
+      expect(r.sizes, expected['sizes']);
+      expect(r.pieceTotal, closeTo(expected['pieceTotal'] as num, 1e-8));
       final demand = <double, int>{};
       for (final row in r.layoutRows) {
         for (final segment in row.segments) {

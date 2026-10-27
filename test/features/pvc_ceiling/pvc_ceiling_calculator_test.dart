@@ -2,6 +2,52 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:grid_ceiling_calculator/features/pvc_ceiling/logic/pvc_ceiling_calculator.dart';
 
 void main() {
+  test('Joint-free orientation wins over cheaper joined rows', () {
+    final result = bestLayout(8, 16, [10, 12])!;
+    expect(result.dir, 'length');
+    expect(result.joints, 0);
+    expect(result.total, 170);
+    expect(
+        result.layoutRows.every((row) =>
+            row.segments.every((segment) => segment.pieces.length == 1)),
+        isTrue);
+  });
+
+  test('Whole spans are not split for offcut savings in irregular rooms', () {
+    for (final shape in [
+      PvcShape.l,
+      PvcShape.u,
+      PvcShape.angled,
+      PvcShape.cutCorner
+    ]) {
+      final result = runPvcCalculation(
+          PvcCalculation(buildPvcRoom(shape, pvcDefaults(shape)), 'mix'))!;
+      expect(result.joints, 0, reason: shape.label);
+    }
+  });
+
+  test('Unavoidable joints use minimum pieces and retain full coverage', () {
+    for (final stocks in [
+      [10.0],
+      [12.0],
+      [10.0, 12.0]
+    ]) {
+      final result = bestLayout(26, 25, stocks)!;
+      final maxStock = stocks.reduce((a, b) => a > b ? a : b);
+      var joints = 0;
+      for (final row in result.layoutRows) {
+        for (final segment in row.segments) {
+          expect(segment.pieces.length,
+              ((segment.x1 - segment.x0) / maxStock - kEps).ceil());
+          expect(segment.pieces.reduce((a, b) => a + b),
+              closeTo(segment.x1 - segment.x0, .002));
+          joints += segment.pieces.length - 1;
+        }
+      }
+      expect(result.joints, joints);
+    }
+  });
+
   test('Cutting guide consumes engine tape readings including blade width', () {
     final group = CutGroup(12, [4, 3, 2], 1);
     expect(group.spans[0], (start: 0.0, end: 4.0));

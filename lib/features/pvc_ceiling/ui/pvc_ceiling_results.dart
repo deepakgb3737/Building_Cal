@@ -20,8 +20,8 @@ class PvcCeilingResults extends StatelessWidget {
         PvcSection(
           title: 'What to buy',
           child: Text(
-            'No valid layout for this choice. Try another plank option or '
-            'check the room size.',
+            'No valid layout for this choice. Try another installation '
+            'direction or plank option, or check the room size.',
             style: AppTypography.text16,
           ),
         ),
@@ -35,6 +35,18 @@ class PvcCeilingResults extends StatelessWidget {
             _buyRow(c),
             const SizedBox(height: 10),
             Text('Room area: ${fmt(c.area)} sq ft',
+                style: AppTypography.text14Greymuted),
+            Text(
+                c.turned
+                    ? 'Installation: across width (B direction)'
+                    : 'Installation: along length (A direction)',
+                style: AppTypography.text14Greymuted),
+            Text(
+                c.alignedJoint == null
+                    ? '${c.joints} joints · Fewer joints preferred before stock savings.'
+                    : '${c.joints} joints · Requested joint line: '
+                        '${fmt(c.alignedJoint! - pvcBounds(c.polygon).x0)} ft from '
+                        '${c.turned ? "top" : "left"} side.',
                 style: AppTypography.text14Greymuted),
             if (c.turned)
               const Text('Plan rotated so planks run left to right.',

@@ -129,7 +129,7 @@ void main() {
   test('U-shaped plan clips material out of the opening', () async {
     final room = buildPvcRoom(PvcShape.u, pvcDefaults(PvcShape.u));
     final layout = runPvcCalculation(PvcCalculation(room, 'mix'))!;
-    expect(layout.turned, isFalse);
+    expect(layout.turned, isTrue);
     final geometry = LayoutGeometry.of(layout), recorder = ui.PictureRecorder();
     CeilingPainter(layout, 1)
         .paint(Canvas(recorder), Size(geometry.vw, geometry.vh));
@@ -137,6 +137,11 @@ void main() {
     final image = await picture.toImage(geometry.vw.ceil(), geometry.vh.ceil());
     final bytes = (await image.toByteData(format: ui.ImageByteFormat.rawRgba))!;
     int alpha(double x, double y) {
+      if (layout.turned) {
+        final originalX = x;
+        x = y;
+        y = originalX;
+      }
       final px = (LayoutGeometry.padL + x * geometry.sc).round();
       final py = (LayoutGeometry.padT + y * geometry.sc).round();
       return bytes.getUint8((py * image.width + px) * 4 + 3);

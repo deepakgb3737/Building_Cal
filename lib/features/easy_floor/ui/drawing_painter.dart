@@ -651,10 +651,11 @@ class DrawingPainter extends CustomPainter {
         if (pair.$2 < 0) return null;
       } else {
         final t = pair.$2 / pair.$1;
-        if (pair.$1 < 0)
+        if (pair.$1 < 0) {
           low = math.max(low, t);
-        else
+        } else {
           high = math.min(high, t);
+        }
       }
     }
     return low <= high ? (a + d * low, a + d * high) : null;

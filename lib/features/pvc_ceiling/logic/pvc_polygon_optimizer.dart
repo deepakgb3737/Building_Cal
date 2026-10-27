@@ -2,15 +2,18 @@ part of 'pvc_ceiling_calculator.dart';
 
 bool _better(Layout a, Layout? b) {
   if (b == null) return true;
+  // Finishing takes priority over offcut savings that introduce extra joints.
+  if (a.joints != b.joints) return a.joints < b.joints;
   final d = a.total - b.total;
   if (d != 0) return d < 0;
-  if (a.joints != b.joints) return a.joints < b.joints;
   return a.count < b.count;
 }
 
 /// Candidate-limited polygon search, matching the supplied multi-layout HTML.
 Layout? bestPolygon(List<PvcPoint> polygon, List<double> stocks,
-    [double mn = kMinPiece]) {
+    [double mn = kMinPiece,
+    PvcOrientation orientation = PvcOrientation.automatic,
+    PvcJointRule jointRule = const PvcJointRule()]) {
   if (polygon.length < 3 ||
       polygon.length > 16 ||
       polygon.any((p) => !p.x.isFinite || !p.y.isFinite) ||
@@ -29,7 +32,12 @@ Layout? bestPolygon(List<PvcPoint> polygon, List<double> stocks,
     throw ArgumentError('Room dimensions exceed the supported range.');
   }
   Layout? res;
+  final joint = pvcJointPosition(polygon, orientation, jointRule);
   for (final turned in [false, true]) {
+    if (orientation == PvcOrientation.length && turned ||
+        orientation == PvcOrientation.width && !turned) {
+      continue;
+    }
     final p =
         turned ? polygon.map((p) => pvcPoint(p.y, p.x)).toList() : polygon;
     final bb = pvcBounds(p), wl = rowsFor(bb.height);
@@ -44,11 +52,13 @@ Layout? bestPolygon(List<PvcPoint> polygon, List<double> stocks,
       yy += h;
     }
     if (raw.any((r) => r.iv.isEmpty)) continue;
-    final keys = raw
-        .expand((r) => r.iv.map((iv) => r3(iv.$2 - iv.$1)))
-        .toSet()
-        .toList()
-      ..sort((a, b) => b.compareTo(a));
+    (double, double) spanKey((double, double) iv) =>
+        joint == null ? (0.0, r3(iv.$2 - iv.$1)) : iv;
+    final keys = raw.expand((r) => r.iv.map(spanKey)).toSet().toList()
+      ..sort((a, b) {
+        final length = (b.$2 - b.$1).compareTo(a.$2 - a.$1);
+        return length != 0 ? length : a.$1.compareTo(b.$1);
+      });
     List<List<List<double>>> combos;
     if (keys.length <= 3) {
       final cap = keys.length == 1
@@ -56,14 +66,26 @@ Layout? bestPolygon(List<PvcPoint> polygon, List<double> stocks,
           : keys.length == 2
               ? 20
               : 7;
-      final lists =
-          keys.map((l) => _trim(splitsFor(l, mn, stocks), cap)).toList();
+      final lists = keys.map((l) {
+        final splits = joint == null
+            ? splitsFor(l.$2, mn, stocks)
+            : _jointSplits(l.$1, l.$2, joint, mn, stocks);
+        if (splits.isEmpty) return <List<double>>[];
+        final fewest = splits.map((s) => s.length).reduce(math.min);
+        return _trim(splits.where((s) => s.length == fewest).toList(), cap);
+      }).toList();
       if (lists.any((l) => l.isEmpty)) continue;
       combos = _product(lists, 400);
     } else {
       combos = [
         for (final kind in <double?>[null, ...stocks])
-          keys.map((l) => _minSplit(l, stocks, mn, kind)).toList()
+          keys
+              .map((l) => joint == null
+                  ? _minSplit(l.$2, stocks, mn, kind)
+                  : _jointSplits(l.$1, l.$2, joint, mn, stocks,
+                          kind ?? stocks.reduce(math.max))
+                      .first)
+              .toList()
       ];
     }
     final index = {for (var i = 0; i < keys.length; i++) keys[i]: i};
@@ -75,7 +97,7 @@ Layout? bestPolygon(List<PvcPoint> polygon, List<double> stocks,
       for (final row in raw) {
         final segs = <PvcPlankSegment>[];
         for (final iv in row.iv) {
-          final pieces = combo[index[r3(iv.$2 - iv.$1)]!];
+          final pieces = combo[index[spanKey(iv)]!];
           for (final p in pieces) {
             final q = r3(p);
             counts[q] = (counts[q] ?? 0) + 1;
@@ -100,6 +122,7 @@ Layout? bestPolygon(List<PvcPoint> polygon, List<double> stocks,
           plan: plan,
           total: plan.fold(0.0, (s, p) => s + p.stock),
           joints: joints,
+          alignedJoint: joint,
           polygon: p,
           layoutRows: rows,
           pieceTotal: rows.fold(

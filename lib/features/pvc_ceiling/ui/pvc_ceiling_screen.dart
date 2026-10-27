@@ -7,6 +7,7 @@ import '../logic/pvc_ceiling_calculator.dart';
 import 'pvc_measurement_guide.dart';
 import 'pvc_section.dart';
 import 'pvc_ceiling_results.dart';
+import 'pvc_ceiling_painter.dart';
 
 class PvcCeilingScreen extends StatefulWidget {
   const PvcCeilingScreen({super.key});
@@ -33,6 +34,14 @@ class _PvcCeilingScreenState extends State<PvcCeilingScreen>
   };
   PvcShape _shape = PvcShape.rectangle;
   String _mode = 'mix', _corner = 'tr';
+  PvcOrientation _orientation = PvcOrientation.automatic;
+  PvcJointMode _jointMode = PvcJointMode.automatic;
+  bool _fromEnd = false;
+  final _jointDistance = TextEditingController();
+  PvcJointRule get _jointRule => PvcJointRule(
+      mode: _jointMode,
+      distanceFt: double.tryParse(_jointDistance.text.replaceAll(',', '.')),
+      fromEnd: _fromEnd);
   Layout? _layout;
   bool _calculated = false, _busy = false;
   int _token = 0;
@@ -44,6 +53,7 @@ class _PvcCeilingScreenState extends State<PvcCeilingScreen>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _load();
+    _jointDistance.addListener(_invalidate);
     for (final c in _controllers.values) {
       c.addListener(_invalidate);
     }
@@ -113,6 +123,7 @@ class _PvcCeilingScreenState extends State<PvcCeilingScreen>
 
   @override
   void dispose() {
+    _jointDistance.dispose();
     WidgetsBinding.instance.removeObserver(this);
     for (final c in _controllers.values) {
       c.removeListener(_invalidate);
@@ -151,8 +162,11 @@ class _PvcCeilingScreenState extends State<PvcCeilingScreen>
       _error = null;
     });
     try {
-      final result =
-          await compute(runPvcCalculation, PvcCalculation(room, _mode));
+      pvcJointPosition(room.points, _orientation, _jointRule);
+      final result = await compute(
+          runPvcCalculation,
+          PvcCalculation(room, _mode,
+              orientation: _orientation, jointRule: _jointRule));
       if (!mounted || token != _token) return;
       setState(() {
         _layout = result;
@@ -165,6 +179,10 @@ class _PvcCeilingScreenState extends State<PvcCeilingScreen>
               alignment: 0, duration: const Duration(milliseconds: 180));
         }
       });
+    } on ArgumentError catch (e) {
+      if (mounted && token == _token) {
+        setState(() => _error = '${e.message}');
+      }
     } catch (_) {
       if (mounted && token == _token) {
         setState(() =>
@@ -198,7 +216,39 @@ class _PvcCeilingScreenState extends State<PvcCeilingScreen>
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               _selectors(),
+                              const SizedBox(height: 12),
+                              DropdownButtonFormField<PvcOrientation>(
+                                  key: const ValueKey('pvcOrientation'),
+                                  initialValue: _orientation,
+                                  isExpanded: true,
+                                  decoration: const InputDecoration(
+                                      labelText:
+                                          'Plank installation direction'),
+                                  items: const [
+                                    DropdownMenuItem(
+                                        value: PvcOrientation.automatic,
+                                        child: Text('Auto · Best layout')),
+                                    DropdownMenuItem(
+                                        value: PvcOrientation.length,
+                                        child:
+                                            Text('Along length · A direction')),
+                                    DropdownMenuItem(
+                                        value: PvcOrientation.width,
+                                        child:
+                                            Text('Across width · B direction')),
+                                  ],
+                                  onChanged: (value) {
+                                    if (value == null ||
+                                        value == _orientation) {
+                                      return;
+                                    }
+                                    final recalculate = _calculated || _busy;
+                                    _orientation = value;
+                                    _invalidate();
+                                    if (recalculate) _calculate();
+                                  }),
                               const SizedBox(height: 6),
+                              _jointControls(room),
                               PvcSection(
                                   title: 'Room measurements',
                                   first: true,
@@ -257,6 +307,87 @@ class _PvcCeilingScreenState extends State<PvcCeilingScreen>
                                     key: _resultsAnchor,
                                     child: PvcCeilingResults(layout: _layout)),
                             ]))))));
+  }
+
+  Widget _jointControls(PvcRoom? room) {
+    double? joint;
+    String? issue;
+    if (_jointMode != PvcJointMode.automatic && room != null) {
+      try {
+        joint = pvcJointPosition(room.points, _orientation, _jointRule);
+      } on ArgumentError catch (e) {
+        issue = '${e.message}';
+      }
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      const SizedBox(height: 6),
+      DropdownButtonFormField<PvcJointMode>(
+          key: const ValueKey('pvcJointMode'),
+          initialValue: _jointMode,
+          isExpanded: true,
+          decoration:
+              const InputDecoration(labelText: 'Joint placement (optional)'),
+          items: const [
+            DropdownMenuItem(
+                value: PvcJointMode.automatic,
+                child: Text('Auto · Existing optimization')),
+            DropdownMenuItem(
+                value: PvcJointMode.centre, child: Text('Centre of room')),
+            DropdownMenuItem(
+                value: PvcJointMode.custom,
+                child: Text('Custom joint position')),
+          ],
+          onChanged: (value) {
+            if (value == null) return;
+            _jointMode = value;
+            _invalidate();
+          }),
+      if (_jointMode != PvcJointMode.automatic) ...[
+        const SizedBox(height: 10),
+        const Text(
+            'Choose A or B installation direction above. The coloured line '
+            'is the joint; left/right refer to the original room diagram, '
+            'top/bottom for B. More material or joints may be required.',
+            style: AppTypography.text14Greymuted),
+        if (_jointMode == PvcJointMode.custom) ...[
+          const SizedBox(height: 10),
+          DropdownButtonFormField<bool>(
+              key: const ValueKey('pvcJointSide'),
+              initialValue: _fromEnd,
+              isExpanded: true,
+              decoration:
+                  const InputDecoration(labelText: 'Measure from room side'),
+              items: [
+                DropdownMenuItem(
+                    value: false,
+                    child: Text(_orientation == PvcOrientation.width
+                        ? 'Top side'
+                        : 'Left side')),
+                DropdownMenuItem(
+                    value: true,
+                    child: Text(_orientation == PvcOrientation.width
+                        ? 'Bottom side'
+                        : 'Right side')),
+              ],
+              onChanged: (value) {
+                if (value == null) return;
+                _fromEnd = value;
+                _invalidate();
+              }),
+          const SizedBox(height: 10),
+          AppNumberField(
+              key: const ValueKey('pvcJointDistance'),
+              validator: (_) => null,
+              label: 'Distance to joint',
+              unit: 'ft',
+              compact: true,
+              controller: _jointDistance),
+        ],
+        if (issue != null) Text(issue, style: AppTypography.text13W600Error),
+        if (joint != null && room != null)
+          PvcShapePreview(room: room, joint: joint, orientation: _orientation),
+      ],
+    ]);
   }
 
   Widget _selectors() => LayoutBuilder(builder: (context, box) {

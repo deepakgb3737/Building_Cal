@@ -54,12 +54,13 @@ class _WallSizeDialogState extends State<WallSizeDialog> {
                                   'Wall ${i + 1} · ${_unit.fromMm(_size(i)).toStringAsFixed(2)} ${_unit.symbol}'))
                       ],
                       onChanged: (value) {
-                        if (value != null)
+                        if (value != null) {
                           setState(() {
                             _wall = value;
                             _length.text =
                                 _unit.fromMm(_size(value)).toString();
                           });
+                        }
                       },
                     ),
                     const SizedBox(height: 12),
@@ -72,14 +73,16 @@ class _WallSizeDialogState extends State<WallSizeDialog> {
                           DropdownMenuItem(value: unit, child: Text(unit.label))
                       ],
                       onChanged: (unit) {
-                        if (unit != null)
+                        if (unit != null) {
                           setState(() {
                             final value = double.tryParse(_length.text);
-                            if (value != null && value.isFinite)
+                            if (value != null && value.isFinite) {
                               _length.text =
                                   unit.fromMm(_unit.toMm(value)).toString();
+                            }
                             _unit = unit;
                           });
+                        }
                       },
                     ),
                     const SizedBox(height: 12),
@@ -111,9 +114,10 @@ class _WallSizeDialogState extends State<WallSizeDialog> {
               child: const Text('Cancel')),
           FilledButton(
               onPressed: () {
-                if (_form.currentState!.validate())
+                if (_form.currentState!.validate()) {
                   Navigator.pop(
                       context, (_wall, _unit.toMm(double.parse(_length.text))));
+                }
               },
               child: const Text('Apply')),
         ],

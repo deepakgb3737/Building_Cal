@@ -108,9 +108,10 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> {
   void _finishOutline() {
     try {
       final points = WallOutline.straighten(_drawingPoints);
-      if (points.isEmpty)
+      if (points.isEmpty) {
         throw ArgumentError(
             'Draw at least three clear walls to create a room.');
+      }
       WallDimensions.validate(points);
       final room = Room(
           id: UniqueKey().toString(),
@@ -688,7 +689,9 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> {
                         },
                         onPointerMove: (event) {
                           if (event.pointer != _outlinePointer ||
-                              _outlineMultiTouch) return;
+                              _outlineMultiTouch) {
+                            return;
+                          }
                           final delta = event.localPosition - _outlinePosition!;
                           _outlinePosition = event.localPosition;
                           _dragOutline(delta);
@@ -730,8 +733,9 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> {
                             _editingGesture = true;
                             _dragError = null;
                             lastPanPosition = d.localPosition;
-                            if (!pencilMode && _outlinePointer == null)
+                            if (!pencilMode && _outlinePointer == null) {
                               selectRoom(d.localPosition);
+                            }
                             if (pencilMode) {
                               _drawingPoints
                                 ..clear()
@@ -778,9 +782,10 @@ class _FloorPlanEditorState extends State<FloorPlanEditor> {
                             _checkpoint();
                             _wallHandle = null;
                             _cornerHandle = null;
-                            if (_dragError != null)
+                            if (_dragError != null) {
                               ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(content: Text(_dragError!)));
+                            }
                             activeHandle = null;
                             startBounds = null;
                             if (pencilMode && drawingPath != null) {

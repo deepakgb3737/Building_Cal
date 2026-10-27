@@ -161,21 +161,24 @@ class WallNetwork {
   void constrain(WallRelationKind kind, int first, int second) {
     if (first == second ||
         !walls.containsKey(first) ||
-        !walls.containsKey(second))
+        !walls.containsKey(second)) {
       throw const DrawingConflict('Select two different existing walls.');
+    }
     if (kind == WallRelationKind.rightAngle) {
       final a = walls[first]!, b = walls[second]!;
-      if (![a.start, a.end].any((n) => n == b.start || n == b.end))
+      if (![a.start, a.end].any((n) => n == b.start || n == b.end)) {
         throw const DrawingConflict(
             'Right-angle constraints require walls sharing a corner.');
+      }
     }
     _transaction((next) {
       if (next._relations.values.any((r) =>
           r.kind == kind &&
           r.first.length == 1 &&
           r.second.length == 1 &&
-          {r.first.single, r.second.single}.containsAll([first, second])))
+          {r.first.single, r.second.single}.containsAll([first, second]))) {
         return;
+      }
       final id = next._nextRelation++;
       next._relations[id] = WallRelation(id, kind, [first], [second]);
     });
@@ -186,9 +189,10 @@ class WallNetwork {
 
   Set<int> groupNodes(Set<int> wallIds, Set<int> cornerIds) {
     if (!wallIds.every(walls.containsKey) ||
-        !cornerIds.every(corners.containsKey))
+        !cornerIds.every(corners.containsKey)) {
       throw const DrawingConflict(
           'The selection contains geometry that no longer exists.');
+    }
     return {
       ...cornerIds,
       for (final id in wallIds) ...[walls[id]!.start, walls[id]!.end]
@@ -364,11 +368,13 @@ class WallNetwork {
       {bool stretchAttached = false}) {
     _checkPoint(delta);
     final nodes = groupNodes(wallIds, cornerIds);
-    if (nodes.isEmpty)
+    if (nodes.isEmpty) {
       throw const DrawingConflict('Select walls or corners first.');
-    if (!stretchAttached && attachedWalls(wallIds, cornerIds).isNotEmpty)
+    }
+    if (!stretchAttached && attachedWalls(wallIds, cornerIds).isNotEmpty) {
       throw const DrawingConflict(
           'This group connects to unselected walls. Include them or enable Stretch attached walls.');
+    }
     moveCorners({for (final id in nodes) id: corners[id]! + delta});
   }
 
@@ -377,22 +383,25 @@ class WallNetwork {
     _checkPoint(delta);
     final nodes = groupNodes(wallIds, cornerIds);
     if (wallIds.isEmpty ||
-        cornerIds.any((id) =>
-            !wallIds.any((w) => walls[w]!.start == id || walls[w]!.end == id)))
+        cornerIds.any((id) => !wallIds
+            .any((w) => walls[w]!.start == id || walls[w]!.end == id))) {
       throw const DrawingConflict(
           'Select walls to duplicate; isolated corner copies are not supported.');
+    }
     Set<int> result = {};
     _transaction((next) {
       for (final span in next._dimensions.values) {
-        if (span.$1.any(wallIds.contains) && !span.$1.every(wallIds.contains))
+        if (span.$1.any(wallIds.contains) && !span.$1.every(wallIds.contains)) {
           throw const DrawingConflict(
               'Include the entire fixed measured span before duplicating.');
+        }
       }
       for (final r in next._relations.values) {
         if (r.touches(wallIds) &&
-            ![...r.first, ...r.second].every(wallIds.contains))
+            ![...r.first, ...r.second].every(wallIds.contains)) {
           throw const DrawingConflict(
               'Include both sides of constrained relationships before duplicating.');
+        }
       }
       final original = next.walls.values.toList(),
           nodeMap = <int, int>{},
@@ -405,9 +414,10 @@ class WallNetwork {
                     projectToSegment(
                         p, next.corners[w.start]!, next.corners[w.end]!))
                 .length <
-            .001))
+            .001)) {
           throw const DrawingConflict(
               'The copy is too close to existing geometry. Drag it to a clear location.');
+        }
         nodeMap[id] = next._nextCorner++;
         next.corners[nodeMap[id]!] = p;
       }
@@ -419,9 +429,10 @@ class WallNetwork {
         for (final other in original) {
           if (_intersections(next.corners[copy.start]!, next.corners[copy.end]!,
                   next.corners[other.start]!, next.corners[other.end]!)
-              .isNotEmpty)
+              .isNotEmpty) {
             throw const DrawingConflict(
                 'The copy touches, crosses or overlaps existing geometry. Drag it to a clear location.');
+          }
         }
       }
       for (final span
@@ -464,13 +475,15 @@ class WallNetwork {
     if (!walls.containsKey(id) ||
         !knownMm.isFinite ||
         knownMm < 10 ||
-        knownMm > 10000000)
+        knownMm > 10000000) {
       throw const DrawingConflict(
           'Select a wall and enter a known length from 10 mm to 10,000 m.');
+    }
     final factor = knownMm / length(id), origin = corners[walls[id]!.start]!;
-    if (_dimensions.isNotEmpty && (factor - 1).abs() > 1e-9)
+    if (_dimensions.isNotEmpty && (factor - 1).abs() > 1e-9) {
       throw const DrawingConflict(
           'Unlock fixed measured spans before calibrating the whole plan.');
+    }
     _transaction((next) {
       next.moveCorners({
         for (final e in next.corners.entries)
@@ -483,8 +496,9 @@ class WallNetwork {
   void lockLength(int id) {
     _transaction((next) {
       final wall = next.walls[id];
-      if (wall == null)
+      if (wall == null) {
         throw const DrawingConflict('Select an existing wall first.');
+      }
       if (next.isFixed(id)) return;
       final mm = next.length(id);
       next.walls[id] = DrawingWall(id, wall.start, wall.end,
@@ -509,8 +523,9 @@ class WallNetwork {
   void unlock(int id) {
     _dimensions.removeWhere((_, value) => value.$1.contains(id));
     for (final w in walls.values.toList()) {
-      if (!isFixed(w.id) && w.fixedLength != null)
+      if (!isFixed(w.id) && w.fixedLength != null) {
         walls[w.id] = DrawingWall(w.id, w.start, w.end, dashed: w.dashed);
+      }
     }
   }
 
@@ -526,8 +541,9 @@ class WallNetwork {
           w.start
     };
     for (final entry in corners.entries) {
-      if (entry.key == excludeCorner || neighbours.contains(entry.key))
+      if (entry.key == excludeCorner || neighbours.contains(entry.key)) {
         continue;
+      }
       final distance = (entry.value - point).length;
       if (distance < best ||
           (cornerId != null && distance == best && entry.key < cornerId)) {
@@ -546,8 +562,9 @@ class WallNetwork {
       })) {
         continue;
       }
-      if (neighbours.any((id) => (corners[id]! - projected).length < 10))
+      if (neighbours.any((id) => (corners[id]! - projected).length < 10)) {
         continue;
+      }
       final distance = (projected - point).length;
       if (distance < best ||
           (cornerId == null &&
@@ -625,9 +642,10 @@ class WallNetwork {
         final b = next.snap(points[i + 1], snapRadius);
         final size = (b - a).length;
         if (size < .001) continue;
-        if (size < 10)
+        if (size < 10) {
           throw const DrawingConflict(
               'A wall segment is below 10 mm. Increase its length; no part of this stroke was added.');
+        }
         _checkPoint(a);
         _checkPoint(b);
         next._insertSegment(a, b, dashed: dashed);
@@ -640,8 +658,9 @@ class WallNetwork {
       DrawingPoint? translation;
       var rigid = positions.isNotEmpty;
       for (final entry in positions.entries) {
-        if (!next.corners.containsKey(entry.key))
+        if (!next.corners.containsKey(entry.key)) {
           throw const DrawingConflict('This corner no longer exists.');
+        }
         _checkPoint(entry.value);
         final delta = entry.value - next.corners[entry.key]!;
         translation ??= delta;
@@ -668,8 +687,9 @@ class WallNetwork {
           for (final b
               in translated.contains(a.id) ? external : next.walls.values) {
             if (a.id == b.id ||
-                !checked.add(a.id < b.id ? (a.id, b.id) : (b.id, a.id)))
+                !checked.add(a.id < b.id ? (a.id, b.id) : (b.id, a.id))) {
               continue;
+            }
             final hits = _intersections(
                 next.corners[a.start]!,
                 next.corners[a.end]!,
@@ -679,9 +699,10 @@ class WallNetwork {
                 hits.any((p) => (p - hits.first).length > .001);
             final crossing = hits.any((p) => [a.start, a.end, b.start, b.end]
                 .every((id) => (next.corners[id]! - p).length > .001));
-            if (overlap || crossing)
+            if (overlap || crossing) {
               throw const DrawingConflict(
                   'That edit crosses or overlaps another wall. Move the corner or wall less.');
+            }
           }
         }
       }
@@ -691,8 +712,9 @@ class WallNetwork {
 
   Set<int> straightRun(int id) {
     final wall = walls[id];
-    if (wall == null)
+    if (wall == null) {
       throw const DrawingConflict('Select an existing wall first.');
+    }
     final a = corners[wall.start]!, direction = corners[wall.end]! - a;
     final adjacency = <int, List<DrawingWall>>{};
     for (final w in walls.values) {
@@ -709,7 +731,9 @@ class WallNetwork {
                     direction.length >
                 .001 ||
             (corners[edge.end]! - a).cross(direction).abs() / direction.length >
-                .001) continue;
+                .001) {
+          continue;
+        }
         result.add(edge.id);
         for (final end in [edge.start, edge.end]) {
           if (nodes.add(end)) pending.add(end);
@@ -723,9 +747,10 @@ class WallNetwork {
       {bool join = false, bool includeStraightRun = true}) {
     _checkPoint(delta);
     final run = straightRun(id);
-    if (!includeStraightRun && run.length > 1)
+    if (!includeStraightRun && run.length > 1) {
       throw const DrawingConflict(
           'This wall has collinear connected segments. Enable Move straight run to move them together, or move a corner.');
+    }
     final nodes = {
       for (final id in run) ...[walls[id]!.start, walls[id]!.end]
     };
@@ -771,11 +796,13 @@ class WallNetwork {
   void splitWall(int id, double distanceMm) {
     _transaction((next) {
       final wall = next.walls[id];
-      if (wall == null)
+      if (wall == null) {
         throw const DrawingConflict('Select an existing wall first.');
+      }
       final size = next.length(id);
-      if (!distanceMm.isFinite || distanceMm < 10 || size - distanceMm < 10)
+      if (!distanceMm.isFinite || distanceMm < 10 || size - distanceMm < 10) {
         throw const DrawingConflict('Each split part must be at least 10 mm.');
+      }
       final a = next.corners[wall.start]!, b = next.corners[wall.end]!;
       next._split(id, [a + (b - a) * (distanceMm / size)]);
     });
@@ -793,9 +820,10 @@ class WallNetwork {
     _transaction((next) {
       final linked =
           next.walls.values.where((w) => w.start == id || w.end == id).toList();
-      if (linked.length != 2)
+      if (linked.length != 2) {
         throw const DrawingConflict(
             'Join requires exactly two walls at this corner. Branch junctions cannot be removed.');
+      }
       final a = linked[0], b = linked[1];
       if (a.dashed != b.dashed) {
         throw const DrawingConflict(
@@ -805,19 +833,22 @@ class WallNetwork {
           end = b.start == id ? b.end : b.start;
       final u = next.corners[start]! - next.corners[id]!,
           v = next.corners[end]! - next.corners[id]!;
-      if (u.dot(v) >= 0 || u.cross(v).abs() / (u.length * v.length) > 1e-6)
+      if (u.dot(v) >= 0 || u.cross(v).abs() / (u.length * v.length) > 1e-6) {
         throw const DrawingConflict(
             'Only straight, opposite wall segments can be joined.');
+      }
       for (final span in next._dimensions.values) {
-        if (span.$1.contains(a.id) != span.$1.contains(b.id))
+        if (span.$1.contains(a.id) != span.$1.contains(b.id)) {
           throw const DrawingConflict(
               'Unlock individual segment lengths before joining them.');
+        }
       }
       for (final r in next._relations.values) {
         for (final side in [r.first, r.second]) {
-          if (side.contains(a.id) != side.contains(b.id))
+          if (side.contains(a.id) != side.contains(b.id)) {
             throw const DrawingConflict(
                 'Remove geometric relationships on individual segments before joining them.');
+          }
         }
       }
       next.walls.remove(a.id);
@@ -848,8 +879,9 @@ class WallNetwork {
       {required bool lock,
       bool join = true,
       WallResizeAnchor anchor = WallResizeAnchor.start}) {
-    if (!mm.isFinite || mm < 10 || mm > 10000000)
+    if (!mm.isFinite || mm < 10 || mm > 10000000) {
       throw const DrawingConflict('Wall length must be 10 mm to 10,000 m.');
+    }
     _transaction((next) {
       final wall = next.walls[id];
       if (wall == null) throw const DrawingConflict('Select a wall first.');
@@ -927,7 +959,9 @@ class WallNetwork {
                 (i) =>
                     edges[i].dot(edges[(i + 1) % 4]).abs() <=
                     edges[i].length * edges[(i + 1) % 4].length * 1e-6)
-            .every((v) => v)) return [a, b, c, d];
+            .every((v) => v)) {
+          return [a, b, c, d];
+        }
       }
     }
     return null;
@@ -935,10 +969,13 @@ class WallNetwork {
 
   void resizeRectangle(int wallId, double width, double lengthMm) {
     final nodes = rectangle(wallId);
-    if (nodes == null)
+    if (nodes == null) {
       throw const DrawingConflict('Select a wall of a rectangular room.');
-    if (![width, lengthMm].every((v) => v.isFinite && v >= 10 && v <= 10000000))
+    }
+    if (![width, lengthMm]
+        .every((v) => v.isFinite && v >= 10 && v <= 10000000)) {
       throw const DrawingConflict('Enter valid room dimensions.');
+    }
     final a = corners[nodes[0]]!;
     final u = corners[nodes[1]]! - a;
     final v = corners[nodes[3]]! - a;
@@ -970,9 +1007,10 @@ class WallNetwork {
   }
 
   static void _checkPoint(DrawingPoint p) {
-    if (!p.isFinite || p.x.abs() > 100000000 || p.y.abs() > 100000000)
+    if (!p.isFinite || p.x.abs() > 100000000 || p.y.abs() > 100000000) {
       throw const DrawingConflict(
           'This drawing exceeds the supported coordinate range.');
+    }
   }
 
   void _validate() {
@@ -984,16 +1022,19 @@ class WallNetwork {
       for (final dimension in _dimensions.values) ...dimension.$1
     };
     for (final wall in walls.values) {
-      if (!corners.containsKey(wall.start) || !corners.containsKey(wall.end))
+      if (!corners.containsKey(wall.start) || !corners.containsKey(wall.end)) {
         throw const DrawingConflict('A wall has a missing connection.');
+      }
       final key = wall.start < wall.end
           ? (wall.start, wall.end)
           : (wall.end, wall.start);
-      if (!edges.add(key))
+      if (!edges.add(key)) {
         throw const DrawingConflict('Duplicate wall segments are not allowed.');
+      }
       final size = length(wall.id);
-      if (!size.isFinite || size < 10 - 1e-6)
+      if (!size.isFinite || size < 10 - 1e-6) {
         throw const DrawingConflict('That edit collapses a wall below 10 mm.');
+      }
       final fixed = wall.fixedLength;
       if (fixed != null &&
           (!fixed.isFinite ||
@@ -1004,18 +1045,20 @@ class WallNetwork {
       }
     }
     for (final r in _relations.values) {
-      if (![...r.first, ...r.second].every(walls.containsKey))
+      if (![...r.first, ...r.second].every(walls.containsKey)) {
         throw const DrawingConflict(
             'A geometric constraint references a missing wall.');
+      }
       DrawingPoint direction(List<int> ids) {
         final w = walls[ids.first]!;
         final d = corners[w.end]! - corners[w.start]!;
         if (ids.any((id) {
           final edge = walls[id]!;
           return !parallelVectors(d, corners[edge.end]! - corners[edge.start]!);
-        }))
+        })) {
           throw DrawingConflict(
               '${r.kind.label} constraint requires its split walls to stay straight.');
+        }
         return d;
       }
 
@@ -1032,15 +1075,17 @@ class WallNetwork {
                   (direction(r.first).length * direction(r.second).length) <=
               1e-6,
       };
-      if (!valid)
+      if (!valid) {
         throw DrawingConflict(
             '${r.kind.label} constraint conflicts with this edit. Align or resize the walls first, or remove the constraint.');
+      }
     }
     for (final dimension in _dimensions.entries) {
       final size = dimension.value.$1.map(length).fold(0.0, (a, b) => a + b);
-      if ((size - dimension.value.$2).abs() > .01)
+      if ((size - dimension.value.$2).abs() > .01) {
         throw DrawingConflict(
             'Measured span ${dimension.key} is fixed at ${dimension.value.$2.toStringAsFixed(1)} mm. Unlock its length before changing connected corners.');
+      }
     }
   }
 
@@ -1055,7 +1100,9 @@ class WallNetwork {
   int _edge(int a, int b, {double? fixed, bool dashed = false}) {
     for (final wall in walls.values) {
       if ((wall.start == a && wall.end == b) ||
-          (wall.start == b && wall.end == a)) return wall.id;
+          (wall.start == b && wall.end == a)) {
+        return wall.id;
+      }
     }
     final id = _nextWall++;
     walls[id] = DrawingWall(id, a, b, fixedLength: fixed, dashed: dashed);
@@ -1090,7 +1137,7 @@ class WallNetwork {
       _relations[r.id] = r.remap({wallId: replacements});
     }
     for (final entry in _dimensions.entries.toList()) {
-      if (entry.value.$1.contains(wallId))
+      if (entry.value.$1.contains(wallId)) {
         _dimensions[entry.key] = (
           [
             for (final id in entry.value.$1)
@@ -1098,6 +1145,7 @@ class WallNetwork {
           ],
           entry.value.$2
         );
+      }
     }
   }
 
@@ -1115,8 +1163,9 @@ class WallNetwork {
           .dot(direction)
           .compareTo((corners[j]! - a).dot(direction)));
     for (var i = 0; i < nodes.length - 1; i++) {
-      if ((corners[nodes[i + 1]]! - corners[nodes[i]]!).length >= .001)
+      if ((corners[nodes[i + 1]]! - corners[nodes[i]]!).length >= .001) {
         _edge(nodes[i], nodes[i + 1], dashed: dashed);
+      }
     }
   }
 

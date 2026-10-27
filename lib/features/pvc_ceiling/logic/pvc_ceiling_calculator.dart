@@ -6,6 +6,7 @@ import 'pvc_room.dart';
 export 'pvc_room.dart';
 part 'pvc_packing.dart';
 part 'pvc_polygon_optimizer.dart';
+part 'pvc_joint_rules.dart';
 
 double r3(double x) => (x * 1000).round() / 1000;
 
@@ -150,13 +151,21 @@ Layout? runBest(List<Object> args) => bestLayout(
     args[0] as double, args[1] as double, pvcStocks(args[2] as String));
 
 class PvcCalculation {
-  const PvcCalculation(this.room, this.mode);
+  const PvcCalculation(this.room, this.mode,
+      {this.orientation = PvcOrientation.automatic,
+      this.jointRule = const PvcJointRule()});
   final PvcRoom room;
   final String mode;
+  final PvcOrientation orientation;
+  final PvcJointRule jointRule;
 }
 
-Layout? runPvcCalculation(PvcCalculation request) =>
-    bestPolygon(request.room.points, pvcStocks(request.mode), kMinPiece);
+Layout? runPvcCalculation(PvcCalculation request) => bestPolygon(
+    request.room.points,
+    pvcStocks(request.mode),
+    kMinPiece,
+    request.orientation,
+    request.jointRule);
 
 List<CutGroup> buildGroups(Layout c) {
   final map = <String, CutGroup>{};
