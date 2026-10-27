@@ -99,11 +99,7 @@ Read [RULES.md](RULES.md) and [AGENTS.md](AGENTS.md) before editing.
 
 Built for BuildCalc by **inusltebuilding.com, Sirsi, Uttara Kannada**.
 
-The application was built using **AI-assisted development** under the team's
-direction. The calculation formulas, business rules, requirements and domain
-decisions were supplied by our team, not invented by AI. Standard mathematical
-and unit definitions are not claimed as original inventions.
-
+The application was developed using AI-assisted development under the direction of our team. Our team independently defined the requirements, business logic, calculation workflows, material-selection rules, and domain-specific optimizations for the grid ceiling and PVC ceiling calculators. While the underlying mathematical principles and standard unit definitions are established concepts, our team designed and implemented the application-specific calculation methods, practical installation rules, and optimization logic to improve calculation accuracy, material utilization, and efficiency in real-world ceiling projects. AI was used as a development aid, while the domain knowledge, requirements, validation criteria, and final implementation decisions were directed by our team.
 Licensed under the [MIT License](LICENSE). Third-party code and assets retain
 their own authorship and licences. See [NOTICE.md](NOTICE.md); review supplied
 asset distribution rights before publishing publicly.
