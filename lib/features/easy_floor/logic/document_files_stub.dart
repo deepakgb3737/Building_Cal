@@ -1,6 +1,6 @@
 import 'document_storage.dart';
 
-DocumentStorage createStorage() => _UnavailableStorage();
+DocumentStorage createStorage({String? namespace}) => _UnavailableStorage();
 
 class _UnavailableStorage implements DocumentStorage {
   @override

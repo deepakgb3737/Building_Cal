@@ -632,14 +632,21 @@ class WallNetwork {
   }
 
   void addPolyline(List<DrawingPoint> points,
-      {double snapRadius = 0, bool dashed = false}) {
+      {double snapRadius = 0,
+      bool dashed = false,
+      bool compactCollinear = false}) {
     for (final point in points) {
       _checkPoint(point);
     }
     _transaction((next) {
-      for (var i = 0; i < points.length - 1; i++) {
-        final a = next.snap(points[i], snapRadius);
-        final b = next.snap(points[i + 1], snapRadius);
+      final snapped = [
+        for (final point in points) next.snap(point, snapRadius),
+      ];
+      final compacted =
+          compactCollinear ? next._compactPolyline(snapped) : snapped;
+      for (var i = 0; i < compacted.length - 1; i++) {
+        final a = compacted[i];
+        final b = compacted[i + 1];
         final size = (b - a).length;
         if (size < .001) continue;
         if (size < 10) {
@@ -651,6 +658,33 @@ class WallNetwork {
         next._insertSegment(a, b, dashed: dashed);
       }
     });
+  }
+
+  List<DrawingPoint> _compactPolyline(List<DrawingPoint> points) {
+    if (points.length < 3) return List.of(points);
+    final result = <DrawingPoint>[points.first];
+    for (var i = 1; i < points.length; i++) {
+      final point = points[i];
+      if ((point - result.last).length < .001) continue;
+      while (result.length >= 2 && i < points.length) {
+        final before = result[result.length - 2];
+        final middle = result.last;
+        final incoming = middle - before;
+        final outgoing = point - middle;
+        final protected =
+            corners.values.any((corner) => (corner - middle).length < .001);
+        final straight = incoming.length >= .001 &&
+            outgoing.length >= .001 &&
+            incoming.dot(outgoing) > 0 &&
+            incoming.cross(outgoing).abs() /
+                    (incoming.length * outgoing.length) <
+                math.sin(math.pi / 90);
+        if (!straight || protected) break;
+        result.removeLast();
+      }
+      result.add(point);
+    }
+    return result;
   }
 
   void moveCorners(Map<int, DrawingPoint> positions, {bool join = false}) {
@@ -767,11 +801,13 @@ class WallNetwork {
     };
     final targets = walls.values
         .where((w) => !nodes.contains(w.start) && !nodes.contains(w.end))
-        .toList();
+        .toList()
+      ..sort((a, b) => a.id.compareTo(b.id));
     var best = radius;
     var result = delta;
     DrawingPoint? connection;
-    for (final node in nodes) {
+    // Resolve equal-distance targets consistently, independent of map order.
+    for (final node in nodes.toList()..sort()) {
       final desired = corners[node]! + delta;
       for (final wall in targets) {
         final a = corners[wall.start]!, b = corners[wall.end]!;

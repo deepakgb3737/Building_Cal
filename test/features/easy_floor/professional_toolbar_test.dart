@@ -62,14 +62,15 @@ void main() {
     expect(t.takeException(), isNull);
   });
 
-  testWidgets('Shapes exposes seven presets without duplicating drawing tools',
+  testWidgets(
+      'Shapes exposes seven presets and Door without duplicating drawing tools',
       (t) async {
     await board.open(t);
     await t.tap(find.byTooltip('Shapes'));
     await t.pumpAndSettle();
     final tiles = find.descendant(
         of: find.byType(BottomSheet), matching: find.byType(ChoiceChip));
-    expect(tiles, findsNWidgets(7));
+    expect(tiles, findsNWidgets(8));
     final tileRects = [
       for (final tile in tiles.evaluate()) t.getRect(find.byWidget(tile.widget))
     ];
@@ -81,6 +82,7 @@ void main() {
       }
     }
     for (final label in [
+      'Door',
       'Square',
       'Rectangle',
       'L-shape',

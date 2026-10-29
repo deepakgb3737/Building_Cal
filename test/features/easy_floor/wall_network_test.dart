@@ -99,6 +99,14 @@ void main() {
     expect(rooms.walls.length, 7);
     expect(rooms.corners.length, 6);
   });
+  test('Redundant collinear stroke points do not create extra joints', () {
+    final model = WallNetwork()
+      ..addPolyline([p(0, 0), p(1000, 1), p(2000, 0), p(3000, 0)],
+          compactCollinear: true);
+    expect(model.walls, hasLength(1));
+    expect(model.corners, hasLength(2));
+    expect(model.length(model.walls.keys.single), closeTo(3000, 1e-6));
+  });
   test('Shared corner edits affect only connected walls', () {
     final model = WallNetwork()
       ..addPolyline([p(0, 0), p(3000, 0), p(3000, 3000)]);

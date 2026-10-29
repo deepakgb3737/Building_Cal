@@ -78,6 +78,11 @@ Existing screens still contain local shadows, opacity values, elevation, and res
   one-sided polygon row envelopes in logic, and clip rendered planks to the
   returned polygon; do not calculate an independent rectangular purchase count.
 - Formulas, conversion factors, validation, placements, and material optimization belong in existing engines/services, not widgets or painters.
+- PVC projects use `features/pvc_ceiling/logic/pvc_projects.dart` for validated
+  versioned input snapshots. Reuse the platform document-storage adapters with
+  the `pvc_ceiling_projects` namespace; preserve EasyFloor's default paths/keys.
+  Never deserialize project input or access storage directly in widgets. Reopen
+  recalculates from validated inputs, and failed writes must not mark edits saved.
 - 2D drawings, 3D drawings, and material summaries must use consistent calculation results. Do not independently recalculate quantities in drawings.
 - Preserve units, precision, placement modes, gap accounting, and optimization behavior unless explicitly requested otherwise.
 - Never substitute mock or random results for real calculated data.
@@ -116,3 +121,19 @@ Update `README.md` and these rules when architecture or shared UI locations chan
 ## Construction Color Theme
 
 The supplied `assets/Theme /` palette is integrated in `lib/core/theme/build_calc_colors.dart`; the active light Material theme lives in `lib/core/theme/app_theme.dart`. `lib/ui/app_theme.dart` exports it for existing callers. `AppColors` maps existing interface tokens to this palette, preserving distinct ceiling drawing/material colors. Update runtime tokens in core, not the reference asset files. Light mode is active; dark mode is not enabled because existing custom widgets use light-specific tokens.
+
+- EasyFloor door symbols use the independent `DrawingDoors` layer. Keep them out
+  of wall topology, snapping, lengths and constraints. Include doors in document
+  captures, history, Undo/Redo, cancellation, clear-all and Fit to Screen. Never
+  silently turn a symbol into a structural opening or discard it on document load.
+
+- EasyFloor PDF exports must render immutable document snapshots, never the live
+  screen or pending strokes. Reuse shared painters and full-content fitting.
+  Keep PDF packaging in `logic/` and Flutter rendering/sharing in `ui/`. Preserve
+  drawing geometry, selected units, notes, doors and history; show errors on failure.
+  Never imply fit-to-page output is a construction-scale or vector/CAD drawing.
+
+- All calculator PDF packaging belongs in `lib/core/pdf/pdf_export.dart`; do not
+  create a second PDF engine. PVC reports must use the current `Layout`, saved-input
+  snapshot and existing cut-group/stock-source helpers, without rerunning or changing
+  calculation formulas. Paginate full reports; never silently truncate cutting rows.

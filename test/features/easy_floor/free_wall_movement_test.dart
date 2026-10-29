@@ -13,6 +13,32 @@ void point(DrawingPoint actual, DrawingPoint expected) =>
 
 void main() {
   for (final scale in [.02, .1, 1.0]) {
+    test('Competing rigid wall snaps are stable at scale $scale', () {
+      final model = WallNetwork()
+        ..addPolyline([p(0, 0), p(300 / scale, 0)])
+        ..addPolyline([p(0, 100 / scale), p(300 / scale, 100 / scale)])
+        ..addPolyline(
+            [p(600 / scale, 400 / scale), p(700 / scale, 400 / scale)]);
+      final moving = model.walls.values.last.id;
+      final delta = p(-500 / scale, -350 / scale);
+      final original = model.toJson();
+      final first = model.snapWallTranslation(moving, delta, 60 / scale);
+      expect(first.connection, isNotNull);
+      expect(model.toJson(), original);
+      final entries = model.walls.entries.toList().reversed;
+      model.walls
+        ..clear()
+        ..addEntries(entries.toList());
+      final reordered = model.snapWallTranslation(moving, delta, 60 / scale);
+      point(reordered.delta, first.delta);
+      point(reordered.connection!, first.connection!);
+      final restored = WallNetwork.fromJson(original);
+      point(restored.snapWallTranslation(moving, delta, 60 / scale).delta,
+          first.delta);
+      expect(restored.toJson(), original);
+    });
+  }
+  for (final scale in [.02, .1, 1.0]) {
     test('Rigid wall translation and hit testing through 360 degrees at $scale',
         () {
       for (final orientation in [0, 45, 90, 137]) {

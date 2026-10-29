@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:grid_ceiling_calculator/features/easy_floor/ui/easy_floor_screen.dart';
 import 'package:grid_ceiling_calculator/features/easy_floor/ui/drawing_painter.dart';
 import 'package:grid_ceiling_calculator/ui/app_theme.dart';
+import 'package:grid_ceiling_calculator/features/easy_floor/logic/drawing_point.dart';
 
 Finder get canvas => find.byKey(const ValueKey('drawingCanvas'));
 Future<void> moreWallOptions(WidgetTester t) async {
@@ -33,13 +34,21 @@ DrawingPainter painter(WidgetTester tester) => tester
         find.descendant(of: canvas, matching: find.byType(CustomPaint)))
     .painter! as DrawingPainter;
 // Existing geometry/label scenarios explicitly exercise the all-measurements view.
-Future<void> open(WidgetTester tester, {bool showLabels = true}) async {
+Future<void> open(WidgetTester tester,
+    {bool showLabels = true, DrawingUnit? unit = DrawingUnit.metres}) async {
   tester.view.physicalSize = const Size(320, 740);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.resetPhysicalSize);
   addTearDown(tester.view.resetDevicePixelRatio);
   await tester.pumpWidget(
       MaterialApp(theme: AppTheme.light, home: const EasyFloorScreen()));
+  // Metric fixtures are explicit; null leaves the production default untouched.
+  if (unit != null) {
+    tester
+        .widget<PopupMenuButton<DrawingUnit>>(
+            find.byType(PopupMenuButton<DrawingUnit>))
+        .onSelected!(unit);
+  }
   final labels =
       tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Labels'));
   if (labels.selected != showLabels) {

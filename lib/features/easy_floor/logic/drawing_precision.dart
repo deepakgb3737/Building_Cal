@@ -32,6 +32,7 @@ DrawingPoint precisionPoint(WallNetwork model, DrawingPoint point,
   final d = point - anchor;
   if (d.length < 10) return result;
   final candidates = <DrawingPoint>[];
+  final connectedCandidates = <DrawingPoint>[];
   void angle(double step) {
     if (!step.isFinite || step <= 0) return;
     final radians = step * math.pi / 180;
@@ -48,41 +49,45 @@ DrawingPoint precisionPoint(WallNetwork model, DrawingPoint point,
 
   if (axes) angle(90);
   if (angleStep != null) angle(angleStep);
-  void along(DrawingPoint direction) {
+  void along(DrawingPoint direction, {bool connected = false}) {
     if (direction.length < .001) return;
     final target =
         anchor + direction * (d.dot(direction) / direction.dot(direction));
     if ((target - point).length / d.length <=
         math.sin(angularTolerance) + 1e-10) {
-      candidates.add(target);
+      (connected ? connectedCandidates : candidates).add(target);
     }
   }
 
   if (axes && previous != null) {
     final axis = anchor - previous;
-    along(axis);
-    along(DrawingPoint(-axis.y, axis.x));
+    along(axis, connected: true);
+    along(DrawingPoint(-axis.y, axis.x), connected: true);
   }
   if (axes || parallel || perpendicular) {
     for (final w in model.walls.values) {
-      if (excludeWalls.contains(w.id)) continue;
       final connected = axes &&
           (projectToSegment(anchor, model.corners[w.start]!,
                           model.corners[w.end]!) -
                       anchor)
                   .length <
               .001;
+      // A corner move excludes its own walls from ordinary snapping, but those
+      // walls are still the authoritative references for 90-degree assistance.
+      if (excludeWalls.contains(w.id) && !connected) continue;
       final axis = model.corners[w.end]! - model.corners[w.start]!;
       for (final direction in [
         if (parallel || connected) axis,
         if (perpendicular || connected) DrawingPoint(-axis.y, axis.x)
       ]) {
-        along(direction);
+        along(direction, connected: connected);
       }
     }
   }
-  var best = tolerance;
-  for (final candidate in candidates) {
+  // Connected angle intent must not disappear when a long wall is zoomed in.
+  var best = connectedCandidates.isEmpty ? tolerance : double.infinity;
+  for (final candidate
+      in connectedCandidates.isEmpty ? candidates : connectedCandidates) {
     final distance = (candidate - point).length;
     if (distance < best) {
       best = distance;

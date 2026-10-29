@@ -59,3 +59,13 @@ The 220-wall all-label desktop debug sample took 86,809 microseconds with
 18 non-overlapping labels visible; this is diagnostic timing, not a release-mode
 mobile frame-rate guarantee.
 No claim of universal compatibility or defect-free behavior is made.
+
+## Competing wall-drag snap targets
+
+A regression test found that equally close targets could change the chosen wall
+connection when the wall map was reordered. Rigid wall snapping now visits moving
+corner IDs and target wall IDs in a stable order. This only resolves distance
+ties; nearer targets, snap tolerance, wall shape and connection rules are unchanged.
+Tests cover three viewport scales, reversed wall order, document round-trip, and
+non-mutation of geometry while calculating the preview snap. Physical-device
+validation of this change has not been performed.

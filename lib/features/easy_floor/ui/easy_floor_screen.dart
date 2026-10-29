@@ -31,8 +31,14 @@ import '../logic/document_repository.dart';
 import '../logic/document_platform_store.dart';
 import '../logic/floor_document.dart';
 import 'document_workspace.dart';
+import '../logic/drawing_doors.dart';
+import 'door_dialog.dart';
+import 'drawing_content_points.dart';
+import 'floor_pdf_renderer.dart';
+import '../logic/floor_pdf_export.dart';
+import 'package:printing/printing.dart';
 
-enum _Tool { smart, draw, wall, corner, pan, group, text, tape }
+enum _Tool { smart, draw, wall, corner, pan, group, text, tape, door }
 
 class EasyFloorScreen extends StatefulWidget {
   const EasyFloorScreen(
@@ -96,7 +102,8 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
         repository: widget.documents ?? createDocumentRepository(),
         context: () => context,
         capture: () => FloorDocument(
-            _model.copy(), _annotations.copy(), _documentSettings),
+            _model.copy(), _annotations.copy(), _documentSettings,
+            doors: _doors.copy()),
         apply: _applyDocument,
         revision: () => _history.revision,
         settingsSignature: () => _documentSettings.editSignature,
@@ -142,8 +149,11 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
     _cancel();
     setState(() {
       _model = doc.walls.copy();
+      _lastDrawnTip = null;
       _annotations = doc.annotations.copy();
-      _history.reset(_model, annotations: _annotations);
+      _doors = doc.doors.copy();
+      _selectedDoor = null;
+      _history.reset(_model, annotations: _annotations, doors: _doors);
       _selectedWall = null;
       _selectedCorner = null;
       _labels.clear();
@@ -174,6 +184,55 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
   }
 
   DrawingAnnotations _annotations = DrawingAnnotations();
+  DrawingDoors _doors = DrawingDoors();
+  DrawingDoors? _beforeDoors;
+  int? _selectedDoor;
+  bool _rotatingDoor = false;
+  final _doorControlsKey = GlobalKey();
+  bool _exportingPdf = false;
+
+  bool get _canExportPdf =>
+      !_selectionBusy &&
+      (_model.walls.isNotEmpty ||
+          _annotations.items.isNotEmpty ||
+          _doors.items.isNotEmpty);
+
+  Future<void> _sharePdf() async {
+    if (!_canExportPdf) return;
+    final snapshot = FloorDocument(
+        _model.copy(), _annotations.copy(), _documentSettings,
+        doors: _doors.copy());
+    final name = _documents.name;
+    final box = context.findRenderObject() as RenderBox?;
+    final bounds = box == null
+        ? const Rect.fromLTWH(0, 0, 1, 1)
+        : box.localToGlobal(Offset.zero) & box.size;
+    setState(() => _exportingPdf = true);
+    try {
+      await WidgetsBinding.instance.endOfFrame;
+      final sheet = await FloorPdfRenderer.render(snapshot, name);
+      final pdf = await FloorPdfExport.build(
+          png: sheet.png, projectName: name, landscape: sheet.landscape);
+      if (!mounted) return;
+      final shared = await Printing.sharePdf(
+          bytes: pdf, filename: FloorPdfExport.filename(name), bounds: bounds);
+      if (!shared && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content:
+                Text('PDF sharing was not completed. You can try again.')));
+      }
+    } catch (error, stack) {
+      debugPrint('PDF export failed: $error\n$stack');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text(
+                'Could not create or share the PDF. Your drawing is unchanged. Try again.')));
+      }
+    } finally {
+      if (mounted) setState(() => _exportingPdf = false);
+    }
+  }
+
   DrawingAnnotations? _beforeAnnotations;
   final Map<int, Rect> _annotationBounds = {};
   final Set<int> _selectedAnnotations = {};
@@ -201,7 +260,7 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
   DrawingPoint _presetAnchor = const DrawingPoint(0, 0);
   Offset? _finger;
   double? _moveOffset;
-  DrawingUnit _unit = DrawingUnit.metres;
+  DrawingUnit _unit = const DocumentSettings().unit;
   bool _outline = true;
   bool _drawDashed = false;
   (DrawingPoint, DrawingPoint)? _tape, _tapeBefore;
@@ -225,7 +284,17 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
 
   final bool _snapping = true;
   bool _alignment = true, _continueDrawing = false;
+  DrawingPoint? _lastDrawnTip;
+  void _rememberDrawTip(List<DrawingPoint> points) {
+    _lastDrawnTip = points.length > 1 &&
+            (points.first - points.last).length > .001 &&
+            _model.nearestCorner(points.last, .001) != null
+        ? points.last
+        : null;
+  }
+
   bool _pressedSelectedCorner = false;
+  bool _pressedSelectedWall = false;
   Timer? _hold;
   final Set<int> _pointers = {};
   final Map<int, Offset> _pointerPositions = {};
@@ -432,6 +501,61 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
   DrawingPoint world(Offset screen) => DrawingPoint(
       (screen.dx - _origin.dx) / _scale, (screen.dy - _origin.dy) / _scale);
 
+  int? _doorAt(Offset position) => _doors.hitTest(world(position), 12 / _scale);
+
+  int? _doorRotationAt(Offset position) => _doors
+      .hitTestRotation(world(position), 18 / _scale, selected: _selectedDoor);
+
+  Future<void> _editDoor({int? id, DrawingPoint? position}) async {
+    if (_before != null) _cancelGesture();
+    _hold?.cancel();
+    _pointerDown = null;
+    var door = id == null ? DrawingDoor(0, position!) : _doors.items[id]!;
+    if (id == null) {
+      final wallId = _model.nearestWall(position!, 16 / _scale);
+      if (wallId != null) {
+        final wall = _model.walls[wallId]!;
+        final a = _model.corners[wall.start]!, b = _model.corners[wall.end]!;
+        final direction = b - a;
+        final width = math.min(door.width, direction.length);
+        final offset = (position - a).dot(direction) / direction.length;
+        door = door.copyWith(
+            position: a +
+                direction *
+                    (offset.clamp(0.0, direction.length - width) /
+                        direction.length),
+            width: width.clamp(100.0, 5000.0),
+            rotation:
+                (math.atan2(b.y - a.y, b.x - a.x) * 180 / math.pi + 360) % 360);
+      }
+    }
+    _textEditing = true;
+    final edited = await showDialog<DrawingDoor>(
+        context: context, builder: (_) => DoorDialog(door: door, unit: _unit));
+    _textEditing = false;
+    if (!mounted || edited == null) return;
+    setState(() {
+      if (id == null) {
+        _selectedDoor = _doors.add(edited);
+      } else {
+        _doors.update(edited);
+        _selectedDoor = id;
+      }
+      _selectedWall = null;
+      _selectedCorner = null;
+      _selectedAnnotations.clear();
+      _roomSelection = {};
+      _tool = _Tool.smart;
+      _history.commit(_model, doors: _doors);
+    });
+  }
+
+  void _toggleDoor() => setState(() {
+        final door = _doors.items[_selectedDoor]!;
+        _doors.update(door.copyWith(opening: door.opening == 0 ? 90 : 0));
+        _history.commit(_model, doors: _doors);
+      });
+
   int? _labelAt(Offset position) {
     _labels.removeWhere((id, _) => !_model.walls.containsKey(id));
     final direct =
@@ -483,7 +607,7 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
           ..add(chosen);
         _selectedWall = null;
         _selectedCorner = null;
-        _history.commit(_model, annotations: _annotations);
+        _history.commit(_model, annotations: _annotations, doors: _doors);
         _error = null;
       } on ArgumentError catch (e) {
         _error = e.message.toString();
@@ -510,7 +634,7 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
           _annotations.delete(_selectedAnnotations);
           _selectedAnnotations.clear();
         }
-        _history.commit(_model, annotations: _annotations);
+        _history.commit(_model, annotations: _annotations, doors: _doors);
         _error = null;
       } on ArgumentError catch (e) {
         _error = e.message.toString();
@@ -580,6 +704,7 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
     _hold?.cancel();
     _before = _model.copy();
     _beforeAnnotations = _annotations.copy();
+    _beforeDoors = _doors.copy();
     _draftBefore = _preset;
     _draftAnchorBefore = _presetAnchor;
     _polygonBefore = List.of(_polygonPoints);
@@ -598,6 +723,7 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
     _error = null;
     _editConflict = false;
     _dragIntent = false;
+    _rotatingDoor = false;
     if (_tool == _Tool.tape) {
       _tapeBefore = _tape;
       _gestureTool = _Tool.tape;
@@ -622,6 +748,33 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
       _gestureTool = _Tool.pan;
       return;
     }
+    final down = _pointerDown ?? details.localFocalPoint;
+    final rotationDoor = _doorRotationAt(down);
+    final door = _doorAt(down);
+    if (_preset == null && !_polygon && !_multiSelect && rotationDoor != null) {
+      _gestureTool = _Tool.door;
+      _selectedDoor = rotationDoor;
+      _rotatingDoor = true;
+      _selectedWall = null;
+      _selectedCorner = null;
+      _selectedAnnotations.clear();
+      return;
+    }
+    if (_preset == null &&
+        !_polygon &&
+        !_multiSelect &&
+        (_tool == _Tool.door || (_tool == _Tool.smart && door != null))) {
+      _gestureTool = _Tool.door;
+      _selectedDoor = door;
+      _selectedWall = null;
+      _selectedCorner = null;
+      _selectedAnnotations.clear();
+      _update(ScaleUpdateDetails(
+          localFocalPoint: details.localFocalPoint,
+          pointerCount: details.pointerCount));
+      return;
+    }
+    _selectedDoor = null;
     _resizingText = _textResizeAt(_pointerDown ?? details.localFocalPoint);
     final text = _annotationAt(_pointerDown ?? details.localFocalPoint);
     if ((_tool == _Tool.smart || _tool == _Tool.text) &&
@@ -692,18 +845,54 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
       });
       return;
     }
-    final target =
+    var target =
         label == null ? _touchTarget(_dragStart!) : (corner: null, wall: label);
-    // Wall strokes continue an unselected open end; tap it first to reshape it.
-    if (!_outline &&
-        _tool == _Tool.smart &&
+    if (_tool == _Tool.smart &&
+        target.wall != null &&
+        !_pressedSelectedWall &&
+        !_pressedSelectedCorner &&
+        _endpointResizeWall == null &&
+        _lastDrawnTip != null) {
+      final wall = _model.walls[target.wall]!;
+      final movement = world(details.localFocalPoint) - _dragStart!;
+      for (final end in [wall.start, wall.end]) {
+        final tip = _model.corners[end]!;
+        final other =
+            _model.corners[end == wall.start ? wall.end : wall.start]!;
+        final outward = tip - other;
+        final directionDot = movement.dot(outward);
+        final directionScale = movement.length * outward.length;
+        if ((tip - _lastDrawnTip!).length < .001 &&
+            (_dragStart! - tip).length <=
+                math.min(14 / _scale, outward.length * .2) &&
+            movement.length > 0 &&
+            (directionDot >= .95 * directionScale ||
+                (_alignment && directionDot.abs() <= .1 * directionScale)) &&
+            !_model.isFixed(wall.id) &&
+            _model.walls.values
+                    .where((w) => w.start == end || w.end == end)
+                    .length ==
+                1) {
+          target = (corner: end, wall: null);
+          break;
+        }
+      }
+    }
+    // Continue open ends or the just-drawn junction; tap first to reshape instead.
+    if (_tool == _Tool.smart &&
         label == null &&
         target.corner != null &&
         !_pressedSelectedCorner &&
         _endpointResizeWall == null) {
       final attached = _model.walls.values
           .where((w) => w.start == target.corner || w.end == target.corner);
-      if (attached.length == 1) _continueDrawing = true;
+      if (attached.every((wall) => !_model.isFixed(wall.id)) &&
+          (attached.length == 1 ||
+              (_lastDrawnTip != null &&
+                  (_model.corners[target.corner]! - _lastDrawnTip!).length <
+                      .001))) {
+        _continueDrawing = true;
+      }
     }
     if (_continueDrawing) _gestureTool = _Tool.draw;
     if (_tool == _Tool.smart && !_continueDrawing) {
@@ -731,7 +920,9 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
       if (_gestureTool == _Tool.draw) {
         var p = _snap(_dragStart!);
         if (_continueDrawing && _snapping) {
-          if (_selectedCorner != null) {
+          if (target.corner != null) {
+            p = _model.corners[target.corner]!;
+          } else if (_selectedCorner != null) {
             p = _model.corners[_selectedCorner!]!;
           } else if (_selectedWall != null) {
             final wall = _model.walls[_selectedWall!]!;
@@ -774,6 +965,7 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
           if (_gestureTool == _Tool.tape) _tape = _tapeBefore;
           _model = _before!.copy();
           _annotations = _beforeAnnotations!.copy();
+          _doors = _beforeDoors!.copy();
           _error = null;
           _editConflict = false;
           _stroke = [];
@@ -825,6 +1017,28 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
       _dragIntent = true;
     }
     setState(() {
+      if (_gestureTool == _Tool.door) {
+        if (_selectedDoor != null) {
+          final door = _beforeDoors!.items[_selectedDoor]!;
+          _doors = _beforeDoors!.copy();
+          if (_rotatingDoor) {
+            final delta = world(details.localFocalPoint) - door.hinge;
+            if (delta.length > .001) {
+              _doors.update(door.copyWith(
+                  rotation: (math.atan2(delta.y, delta.x) * 180 / math.pi +
+                          90 +
+                          360) %
+                      360));
+            }
+          } else {
+            _doors.update(door.copyWith(
+                position: door.position +
+                    world(details.localFocalPoint) -
+                    _dragStart!));
+          }
+        }
+        return;
+      }
       if (_gestureTool == _Tool.text) {
         if (_resizingText != null) {
           final note = _beforeAnnotations!.items[_resizingText]!;
@@ -1144,7 +1358,9 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
                 recognize: _recognition &&
                     !_preview.any((p) => _model.nearestWall(p, .001) != null));
             if (cleanup.original.length == 2 && cleanup.refined.length == 2) {
-              _model.addPolyline(cleanup.refined, dashed: _drawDashed);
+              _model.addPolyline(cleanup.refined,
+                  dashed: _drawDashed, compactCollinear: true);
+              _rememberDrawTip(cleanup.refined);
             } else {
               _suggestion = ShapeSuggestion(
                   cleanup.shape ?? ShapePreset.polygon, cleanup.refined);
@@ -1153,13 +1369,16 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
               _refinementPreview = false;
             }
           } else {
-            _model.addPolyline(_preview, dashed: _drawDashed);
+            _model.addPolyline(_preview,
+                dashed: _drawDashed, compactCollinear: true);
+            _rememberDrawTip(_preview);
           }
         } else if (!_multiTouch &&
             (_gestureTool == _Tool.wall ||
                 _gestureTool == _Tool.corner ||
                 (_gestureTool == _Tool.group && _roomSelection.isEmpty))) {
           _model.moveCorners({}, join: true);
+          _lastDrawnTip = null;
         }
         if (_gestureTool == _Tool.group &&
             !_editConflict &&
@@ -1173,7 +1392,11 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
           _duplicateGroup = false;
         }
         if (!_multiTouch && _gestureTool != _Tool.pan) {
-          _history.commit(_model, annotations: _annotations);
+          _history.commit(_model,
+              annotations: _annotations,
+              doors: _doors,
+              drawingTip: _gestureTool == _Tool.draw ? _lastDrawnTip : null);
+          _lastDrawnTip = _history.drawingTip;
         }
       } on DrawingConflict catch (e) {
         _model = _before ?? _model;
@@ -1183,6 +1406,7 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
       _resizingText = null;
       _endpointResizeWall = null;
       _beforeAnnotations = null;
+      _beforeDoors = null;
       _groupPreviewWalls = {};
       if (!_pickedWalls.every(_model.walls.containsKey) ||
           !_pickedCorners.every(_model.corners.containsKey)) {
@@ -1223,6 +1447,16 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
       return;
     }
     final tapPosition = _pointerDown ?? details.localPosition;
+    final doorAtTap = _doorAt(tapPosition);
+    if (_preset == null &&
+        _suggestion == null &&
+        !_polygon &&
+        !_multiSelect &&
+        (_tool == _Tool.door || (_tool == _Tool.smart && doorAtTap != null))) {
+      _editDoor(id: doorAtTap, position: world(tapPosition));
+      return;
+    }
+    _selectedDoor = null;
     final labelAtDown =
         _pointerDown == null ? _labelAt(tapPosition) : _pressedLabel;
     if (_suggestion != null) return;
@@ -1434,6 +1668,8 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
       }
       _model = _before ?? _model;
       _annotations = _beforeAnnotations ?? _annotations;
+      if (_before != null && _beforeDoors != null) _doors = _beforeDoors!;
+      _beforeDoors = null;
       _beforeAnnotations = null;
       _selectedAnnotations.clear();
       _multiText = false;
@@ -1560,7 +1796,10 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
     _cancel();
     setState(() {
       _model = undo ? _history.undo() : _history.redo();
+      _lastDrawnTip = _history.drawingTip;
       _annotations = _history.annotations;
+      _doors = _history.doors;
+      _selectedDoor = null;
       final sketch = _history.sketch;
       if (sketch != null) {
         _drawDashed = sketch.dashed;
@@ -1586,16 +1825,11 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
   void _fit() {
     _resetFitTap();
     if (_before != null) _cancel();
-    final points = [..._model.corners.values];
-    for (final note in _annotations.items.values) {
-      final size = annotationWorldSize(note);
-      points.addAll([
-        note.position,
-        note.position + DrawingPoint(size.width, size.height)
-      ]);
-    }
-    final panel = !_hideUi && _tool == _Tool.text
-        ? _textControlsKey.currentContext?.findRenderObject() as RenderBox?
+    final points = drawingContentPoints(_model, _annotations, _doors);
+    final panelKey =
+        _selectedDoor != null ? _doorControlsKey : _textControlsKey;
+    final panel = !_hideUi && (_tool == _Tool.text || _selectedDoor != null)
+        ? panelKey.currentContext?.findRenderObject() as RenderBox?
         : null;
     final viewport = Offset.zero & _viewport;
     var available = [viewport];
@@ -1694,7 +1928,8 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
       _cancel();
       setState(() {
         _model = next;
-        _history.commit(_model);
+        _rememberDrawTip(points);
+        _history.commit(_model, drawingTip: _lastDrawnTip);
       });
     } on DrawingConflict catch (e) {
       setState(() => _error = e.message);
@@ -1854,6 +2089,7 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
           ]);
 
   bool get _selectionBusy =>
+      _exportingPdf ||
       _before != null ||
       _pointers.isNotEmpty ||
       _navigationLocked ||
@@ -1867,7 +2103,9 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
   bool get _canDeleteGeometry {
     if (_selectionBusy) return false;
     if (_allSelected) {
-      return _model.walls.isNotEmpty || _annotations.items.isNotEmpty;
+      return _model.walls.isNotEmpty ||
+          _annotations.items.isNotEmpty ||
+          _doors.items.isNotEmpty;
     }
     if (_multiSelect) {
       return (_pickedWalls.isNotEmpty || _pickedCorners.isNotEmpty) &&
@@ -1877,7 +2115,8 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
     if (_roomSelection.isNotEmpty) {
       return _roomSelection.every(_model.walls.containsKey);
     }
-    return _model.walls.containsKey(_selectedWall) ||
+    return _doors.items.containsKey(_selectedDoor) ||
+        _model.walls.containsKey(_selectedWall) ||
         _model.corners.containsKey(_selectedCorner);
   }
 
@@ -2006,10 +2245,13 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
       if (_allSelected) {
         _model = WallNetwork();
         _annotations = DrawingAnnotations();
+        _doors = DrawingDoors();
         _selectedAnnotations.clear();
         _pickedWalls.clear();
         _pickedCorners.clear();
         _multiSelect = false;
+      } else if (_selectedDoor != null) {
+        _doors.delete(_selectedDoor!);
       } else if (_multiSelect) {
         _model.deleteGroup(_pickedWalls, _pickedCorners);
         _pickedWalls.clear();
@@ -2027,8 +2269,9 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
       _roomSelection = {};
       _selectedWall = null;
       _selectedCorner = null;
+      _selectedDoor = null;
       _error = null;
-      _history.commit(_model, annotations: _annotations);
+      _history.commit(_model, annotations: _annotations, doors: _doors);
     });
   }
 
@@ -2039,7 +2282,7 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
         builder: (_) => AlertDialog(
                 title: const Text('Clear entire plan?'),
                 content: const Text(
-                    'All walls and text will be removed. You can restore them with Undo.'),
+                    'All walls, doors and text will be removed. You can restore them with Undo.'),
                 actions: [
                   TextButton(
                       onPressed: () => Navigator.pop(context, false),
@@ -2053,9 +2296,11 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
     setState(() {
       _model = WallNetwork();
       _annotations = DrawingAnnotations();
+      _doors = DrawingDoors();
+      _selectedDoor = null;
       _selectedWall = null;
       _selectedCorner = null;
-      _history.commit(_model, annotations: _annotations);
+      _history.commit(_model, annotations: _annotations, doors: _doors);
     });
   }
 
@@ -2238,10 +2483,14 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
       _stroke = [];
       _preview = [];
       _tool = tool;
+      _selectedDoor = null;
       _tape = null;
       _selectedAnnotations.clear();
       _multiText = false;
-      if (tool == _Tool.text || tool == _Tool.pan || tool == _Tool.tape) {
+      if (tool == _Tool.text ||
+          tool == _Tool.pan ||
+          tool == _Tool.tape ||
+          tool == _Tool.door) {
         _multiSelect = false;
         _pickedWalls.clear();
         _pickedCorners.clear();
@@ -2301,7 +2550,7 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
                             ),
                             (
                               'Add a connected wall',
-                              'In Wall, drag from an open endpoint to continue drawing. Tap the endpoint first to move it instead. Hold on a wall or shared corner to add a branch. Drawing assistance switches between 90° help and Free Angle.'
+                              'In Draw or Wall, drag from an open endpoint to continue. You can also continue through the junction you just drew. Tap a corner first to move it instead. Hold on other shared corners or walls to add a branch. Drawing assistance switches between 90° help and Free Angle.'
                             ),
                             (
                               'Review a rough sketch',
@@ -2335,6 +2584,10 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
     if (_before != null) _cancelGesture();
     final value = await showDrawingShapes(context);
     if (!mounted || value == null) return;
+    if (value == 'door') {
+      _chooseTool(_Tool.door);
+      return;
+    }
     _chooseShape(ShapePreset.values.byName(value));
   }
 
@@ -2358,7 +2611,9 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
             label: 'Fit',
             tooltip: 'Fit to Screen',
             icon: Icons.fit_screen,
-            onPressed: _model.walls.isEmpty && _annotations.items.isEmpty
+            onPressed: _model.walls.isEmpty &&
+                    _annotations.items.isEmpty &&
+                    _doors.items.isEmpty
                 ? null
                 : _fit),
         if (_before != null)
@@ -2432,6 +2687,7 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
                   drawingTool(
                       label: 'Shapes',
                       icon: Icons.category_outlined,
+                      selected: _tool == _Tool.door,
                       onPressed: _shapes),
                   drawingTool(
                       label: 'Pan',
@@ -2464,7 +2720,7 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
         if (!didPop) _closeWorkspace();
       },
       child: AbsorbPointer(
-          absorbing: _documents.busy,
+          absorbing: _documents.busy || _exportingPdf,
           child: Scaffold(
             appBar: _hideUi
                 ? null
@@ -2490,24 +2746,30 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
                             tooltip: 'Documents',
                             icon: const Icon(Icons.folder_open_outlined),
                             onSelected: (value) {
-                              if (value == 'close') {
+                              if (value == 'pdf') {
+                                _sharePdf();
+                              } else if (value == 'close') {
                                 _closeWorkspace();
                               } else {
                                 _documents.action(value);
                               }
                             },
-                            itemBuilder: (_) => const [
+                            itemBuilder: (_) => [
                                   PopupMenuItem(
+                                      value: 'pdf',
+                                      enabled: _canExportPdf,
+                                      child: const Text('Share PDF')),
+                                  const PopupMenuItem(
                                       value: 'save', child: Text('Save')),
-                                  PopupMenuItem(
+                                  const PopupMenuItem(
                                       value: 'saveAs', child: Text('Save As')),
-                                  PopupMenuItem(
+                                  const PopupMenuItem(
                                       value: 'new',
                                       child: Text('New Document')),
-                                  PopupMenuItem(
+                                  const PopupMenuItem(
                                       value: 'open',
                                       child: Text('Open Document')),
-                                  PopupMenuItem(
+                                  const PopupMenuItem(
                                       value: 'close',
                                       child: Text('Close Document')),
                                 ]),
@@ -2528,7 +2790,8 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
                                 _cancel();
                                 setState(() {
                                   _allSelected = _model.walls.isNotEmpty ||
-                                      _annotations.items.isNotEmpty;
+                                      _annotations.items.isNotEmpty ||
+                                      _doors.items.isNotEmpty;
                                   _multiSelect = true;
                                   _selectedWall = null;
                                   _selectedCorner = null;
@@ -2565,7 +2828,8 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
                       ]),
             body: SafeArea(
                 child: Column(children: [
-              if (_documents.writing) const LinearProgressIndicator(),
+              if (_documents.writing || _exportingPdf)
+                const LinearProgressIndicator(),
               Expanded(child: LayoutBuilder(builder: (context, constraints) {
                 _viewport = constraints.biggest;
                 return Stack(key: _boardBoundsKey, children: [
@@ -2637,6 +2901,10 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
                               }
                               if (_before == null) {
                                 _pointerDown = event.localPosition;
+                                _pressedSelectedWall = _selectedWall != null &&
+                                    _touchTarget(world(event.localPosition))
+                                            .wall ==
+                                        _selectedWall;
                                 _pressedSelectedCorner =
                                     _selectedCorner != null &&
                                         _touchTarget(world(event.localPosition))
@@ -2675,6 +2943,7 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
                                     _preset == null &&
                                     !_polygon &&
                                     _suggestion == null &&
+                                    _doorAt(event.localPosition) == null &&
                                     !_multiSelect) {
                                   setState(() {
                                     final p = world(event.localPosition);
@@ -2752,6 +3021,11 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
                                 child: CustomPaint(
                                     size: constraints.biggest,
                                     foregroundPainter: AnnotationPainter(
+                                        doors: _doors,
+                                        selectedDoor: _selectedDoor,
+                                        onEditDoor: _tool == _Tool.tape
+                                            ? null
+                                            : (id) => _editDoor(id: id),
                                         annotations: _annotations,
                                         origin: _origin,
                                         scale: _scale,
@@ -2884,8 +3158,52 @@ class _EasyFloorScreenState extends State<EasyFloorScreen> {
                     child: Offstage(
                       offstage: _hideUi,
                       child: Stack(children: [
+                        if (_tool == _Tool.door &&
+                            _selectedDoor == null &&
+                            _before == null)
+                          const Positioned(
+                              left: 24,
+                              right: 24,
+                              top: 16,
+                              child: IgnorePointer(
+                                  child: Text(
+                                      'Tap to place a door. Near a wall, it follows the wall direction.',
+                                      textAlign: TextAlign.center,
+                                      style: AppTypography.text12Muted))),
+                        if (_selectedDoor != null &&
+                            _doors.items.containsKey(_selectedDoor) &&
+                            _before == null)
+                          Positioned(
+                              left: 8,
+                              right: 8,
+                              bottom: _contextBottom,
+                              child: _contextPanel(_doorControlsKey,
+                                  child: Wrap(
+                                      spacing: 8,
+                                      crossAxisAlignment:
+                                          WrapCrossAlignment.center,
+                                      children: [
+                                        Text(
+                                            'Door ${_unit.format(_doors.items[_selectedDoor]!.width)}',
+                                            style:
+                                                AppTypography.text14W600Text),
+                                        TextButton(
+                                            onPressed: () =>
+                                                _editDoor(id: _selectedDoor),
+                                            child: const Text('Edit door')),
+                                        TextButton(
+                                            onPressed: _toggleDoor,
+                                            child: Text(_doors
+                                                        .items[_selectedDoor]!
+                                                        .opening ==
+                                                    0
+                                                ? 'Open door'
+                                                : 'Close door')),
+                                        _contextDelete(),
+                                      ]))),
                         if (_model.walls.isEmpty &&
                             _annotations.items.isEmpty &&
+                            _doors.items.isEmpty &&
                             _before == null &&
                             _pointers.isEmpty &&
                             _suggestion == null &&

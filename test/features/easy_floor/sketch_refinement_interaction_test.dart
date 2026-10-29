@@ -160,7 +160,7 @@ void main() {
   });
   testWidgets('A restored sketch can be discarded without phantom dirty work',
       (t) async {
-    await drawing.open(t);
+    await drawing.open(t, unit: null);
     await natural.stroke(t, roughSquare, finish: false);
     await choose(t, 'Yes, Straighten');
     await choose(t, 'Accept refinement');

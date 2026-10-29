@@ -2,17 +2,40 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'document_storage.dart';
 
-DocumentStorage createStorage() => FileDocumentStorage();
+DocumentStorage createStorage({String? namespace}) =>
+    FileDocumentStorage(namespace: namespace ?? 'easy_floor_documents');
 
 class FileDocumentStorage implements DocumentStorage {
-  FileDocumentStorage({Directory? directory}) : _provided = directory;
+  FileDocumentStorage(
+      {Directory? directory, this.namespace = 'easy_floor_documents'})
+      : _provided = directory {
+    validateDocumentId(namespace);
+  }
   final Directory? _provided;
+  final String namespace;
   Future<Directory> _directory() async {
     final dir = _provided ??
         Directory(
-            '${(await getApplicationSupportDirectory()).path}/easy_floor_documents');
+            '${(await getApplicationDocumentsDirectory()).path}/$namespace');
     await dir.create(recursive: true);
+    if (_provided == null) await _migrateLegacySupportDirectory(dir);
     return dir;
+  }
+
+  Future<void> _migrateLegacySupportDirectory(Directory target) async {
+    final legacy = Directory(
+        '${(await getApplicationSupportDirectory()).path}/$namespace');
+    if (!await legacy.exists()) return;
+    await for (final entry in legacy.list()) {
+      if (entry is! File || !entry.path.endsWith('.json')) continue;
+      final destination = File('${target.path}/${entry.uri.pathSegments.last}');
+      if (await destination.exists()) continue;
+      try {
+        await entry.copy(destination.path);
+      } on FileSystemException {
+        // Keep the legacy copy available if migration is interrupted.
+      }
+    }
   }
 
   @override

@@ -192,3 +192,30 @@ List<CutGroup> buildGroups(Layout c) {
     });
   return list;
 }
+
+/// Source stock length for each installed piece, in row/segment/piece order.
+List<double> pvcInstalledStocks(Layout layout) {
+  final available = <double, List<double>>{};
+  for (final plank in layout.plan) {
+    for (var i = 0; i < layout.sizes.length; i++) {
+      (available[layout.sizes[i]] ??= [])
+          .addAll(List.filled(plank.counts[i], plank.stock));
+    }
+  }
+  final result = <double>[];
+  for (final row in layout.layoutRows) {
+    for (final segment in row.segments) {
+      for (final piece in segment.pieces) {
+        final sources = available[piece];
+        if (sources == null || sources.isEmpty) {
+          throw StateError('Installed piece is missing from the cutting plan.');
+        }
+        result.add(sources.removeLast());
+      }
+    }
+  }
+  if (available.values.any((sources) => sources.isNotEmpty)) {
+    throw StateError('Cutting plan contains unassigned pieces.');
+  }
+  return result;
+}

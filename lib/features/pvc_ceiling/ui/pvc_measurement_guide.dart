@@ -25,6 +25,8 @@ class PvcMeasurementGuide extends StatelessWidget {
                   : () => showDialog<void>(
                       context: context,
                       builder: (context) => AlertDialog(
+                              insetPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 24),
                               scrollable: true,
                               title: Text('${room!.shape.label} measurements'),
                               content: Column(
@@ -35,7 +37,7 @@ class PvcMeasurementGuide extends StatelessWidget {
                                         height:
                                             (MediaQuery.sizeOf(context).height *
                                                     .4)
-                                                .clamp(120.0, 340.0),
+                                                .clamp(240.0, 340.0),
                                         child: CustomPaint(
                                             painter: PvcShapePreviewPainter(
                                                 room!, active,

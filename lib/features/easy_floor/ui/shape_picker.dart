@@ -21,6 +21,10 @@ Future<String?> showDrawingShapes(BuildContext context) => showModalBottomSheet<
                   Expanded(
                       child: SingleChildScrollView(
                           child: DrawingToolbarRow(minimumWidth: 90, children: [
+                    drawingTool(
+                        label: 'Door',
+                        icon: Icons.door_front_door_outlined,
+                        onPressed: () => Navigator.pop(context, 'door')),
                     for (final kind in ShapePreset.values)
                       drawingTool(
                           label: kind == ShapePreset.polygon

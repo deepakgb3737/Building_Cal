@@ -3,6 +3,8 @@ import 'package:flutter/semantics.dart';
 import 'package:grid_ceiling_calculator/ui/app_colors.dart';
 import 'package:grid_ceiling_calculator/ui/app_typography.dart';
 import '../logic/drawing_annotations.dart';
+import '../logic/drawing_doors.dart';
+import 'door_painter.dart';
 
 Color annotationColor(AnnotationInk ink) => switch (ink) {
       AnnotationInk.ink => AppColors.ink,
@@ -41,9 +43,15 @@ class AnnotationPainter extends CustomPainter {
       required this.origin,
       required this.scale,
       required this.bounds,
+      this.doors,
+      this.selectedDoor,
+      this.onEditDoor,
       this.onEdit,
       this.selected = const {}});
   final DrawingAnnotations annotations;
+  final DrawingDoors? doors;
+  final int? selectedDoor;
+  final ValueChanged<int>? onEditDoor;
   final Offset origin;
   final double scale;
   final Map<int, Rect> bounds;
@@ -55,6 +63,14 @@ class AnnotationPainter extends CustomPainter {
     bounds.clear();
     canvas.save();
     canvas.clipRect(Offset.zero & size);
+    if (doors != null) {
+      DoorPainter(
+              doors: doors!,
+              origin: origin,
+              scale: scale,
+              selected: selectedDoor)
+          .paint(canvas, size);
+    }
     for (final note in annotations.items.values) {
       final factor =
           annotationFontPixels(note.sizeMm, scale) / (note.sizeMm * .1);
@@ -96,19 +112,43 @@ class AnnotationPainter extends CustomPainter {
   bool shouldRepaint(covariant AnnotationPainter oldDelegate) => true;
 
   @override
-  SemanticsBuilderCallback get semanticsBuilder => (size) => [
-        for (final note in annotations.items.values)
-          if (bounds.containsKey(note.id) &&
-              bounds[note.id]!.overlaps(Offset.zero & size))
-            CustomPainterSemantics(
-                rect: bounds[note.id]!.inflate(10),
-                properties: SemanticsProperties(
-                    label: note.text,
-                    textDirection: TextDirection.ltr,
-                    selected: selected.contains(note.id),
-                    button: onEdit != null,
-                    onTap: onEdit == null ? null : () => onEdit!(note.id)))
-      ];
+  SemanticsBuilderCallback get semanticsBuilder => (size) {
+        final result = <CustomPainterSemantics>[
+          for (final note in annotations.items.values)
+            if (bounds.containsKey(note.id) &&
+                bounds[note.id]!.overlaps(Offset.zero & size))
+              CustomPainterSemantics(
+                  rect: bounds[note.id]!.inflate(10),
+                  properties: SemanticsProperties(
+                      label: note.text,
+                      textDirection: TextDirection.ltr,
+                      selected: selected.contains(note.id),
+                      button: onEdit != null,
+                      onTap: onEdit == null ? null : () => onEdit!(note.id)))
+        ];
+        for (final door in doors?.items.values ?? <DrawingDoor>[]) {
+          Offset screen(double x, double y) => origin + Offset(x, y) * scale;
+          final hinge = screen(door.hinge.x, door.hinge.y);
+          final rect =
+              Rect.fromPoints(hinge, screen(door.leafEnd.x, door.leafEnd.y))
+                  .expandToInclude(Rect.fromPoints(
+                      hinge, screen(door.closedEnd.x, door.closedEnd.y)))
+                  .inflate(12)
+                  .intersect(Offset.zero & size);
+          if (rect.isEmpty) continue;
+          result.add(CustomPainterSemantics(
+              rect: rect,
+              properties: SemanticsProperties(
+                  label:
+                      'Door, width ${door.width.round()} millimetres, opening ${door.opening.round()} degrees',
+                  textDirection: TextDirection.ltr,
+                  selected: selectedDoor == door.id,
+                  button: onEditDoor != null,
+                  onTap:
+                      onEditDoor == null ? null : () => onEditDoor!(door.id))));
+        }
+        return result;
+      };
 
   @override
   bool shouldRebuildSemantics(covariant AnnotationPainter oldDelegate) => true;

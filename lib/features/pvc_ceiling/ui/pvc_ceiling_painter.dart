@@ -91,6 +91,33 @@ class CeilingPainter extends CustomPainter {
   final double k;
   CeilingPainter(this.c, this.k);
 
+  TextPainter? pieceLabel(double length, double stock, Size space) {
+    for (final separator in ['\n', '  ', '']) {
+      final text = TextPainter(
+        text: TextSpan(children: [
+          TextSpan(
+              text: ftin(length),
+              style: AppTypography.input.copyWith(
+                  fontSize: 17 * k,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.white)),
+          if (separator.isNotEmpty)
+            TextSpan(
+                text: '$separator${stock.toInt()}f plank',
+                style: AppTypography.input
+                    .copyWith(fontSize: 10 * k, color: AppColors.white)),
+        ]),
+        textAlign: TextAlign.center,
+        textDirection: TextDirection.ltr,
+      )..layout();
+      if (text.width <= space.width - 14 && text.height <= space.height - 4) {
+        return text;
+      }
+      text.dispose();
+    }
+    return null;
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
     final g = LayoutGeometry.of(c);
@@ -109,7 +136,9 @@ class CeilingPainter extends CustomPainter {
     canvas.drawPath(polygon, _fill(AppColors.pvcWall));
     canvas.save();
     canvas.clipPath(polygon);
-    final labels = <({String text, Offset at})>[];
+    final labels = <({TextPainter text, Offset at})>[];
+    final sources = pvcInstalledStocks(c);
+    var pieceIndex = 0;
     for (final row in c.layoutRows) {
       final yy = y + (row.y0 - bounds.y0) * sc;
       final ph = row.width * sc;
@@ -117,6 +146,7 @@ class CeilingPainter extends CustomPainter {
       for (final segment in row.segments) {
         var from = segment.x0;
         for (var i = 0; i < segment.pieces.length; i++) {
+          final stock = sources[pieceIndex++];
           final p = segment.pieces[i], xx = x + (from - bounds.x0) * sc;
           final pw = p * sc;
           final rect = Rect.fromLTWH(xx, yy, pw, ph);
@@ -144,10 +174,12 @@ class CeilingPainter extends CustomPainter {
               center = (a + b) / 2;
             }
           }
-          if (ph >= 22 && width * sc >= ftin(p).length * 9.5 * k + 14) {
+          final text = pieceLabel(p, stock, Size(width * sc, ph));
+          if (text != null) {
             labels.add((
-              text: ftin(p),
-              at: Offset(x + (center - bounds.x0) * sc, yy + ph / 2 + 6 * k)
+              text: text,
+              at: Offset(x + (center - bounds.x0) * sc - text.width / 2,
+                  yy + (ph - text.height) / 2)
             ));
           }
           from += p;
@@ -156,8 +188,8 @@ class CeilingPainter extends CustomPainter {
     }
     canvas.restore();
     for (final label in labels) {
-      _text(canvas, label.text, label.at.dx, label.at.dy, 17 * k,
-          weight: FontWeight.w700, color: AppColors.white);
+      label.text.paint(canvas, label.at);
+      label.text.dispose();
     }
     canvas.drawPath(polygon, _stroke(AppColors.ink, 2.5));
     for (var i = 0; i < c.layoutRows.length; i++) {
@@ -201,6 +233,14 @@ class CeilingPainter extends CustomPainter {
     _text(canvas, 'Start at row 1. Shaded band is the wall.', x, legendY + 33,
         15 * k,
         color: AppColors.muted, anchor: _Anchor.start);
+    _text(
+        canvas,
+        'Small 10f / 12f labels identify source planks, not cut lengths.',
+        x,
+        legendY + 58,
+        13 * k,
+        color: AppColors.muted,
+        anchor: _Anchor.start);
   }
 
   void _arrowH(Canvas canvas, double a, double b, double v) {

@@ -40,11 +40,19 @@ edits. Unknown formats and invalid geometry are rejected, not repaired silently.
 
 `logic/document_storage.dart` separates persistence from the model. Native
 storage uses the installed `path_provider` dependency and an
-`easy_floor_documents` folder inside application support. Each save flushes a
+`easy_floor_documents` folder inside application documents. Existing files in
+the previous application-support location are migrated once without replacing
+newer files. Each save flushes a
 temporary `.pending` file then renames it over the `.json` document in the same
 directory. Incomplete pending files are never offered as documents. Browser
 storage uses a single localStorage value per document under
 `buildcalc.easyfloor.`; storage failures propagate to the UI.
+
+Android declares app-data backup and device-transfer rules for these files, so
+normal app updates preserve them and supported OS backup/restore can recover
+them after reinstall. A full uninstall is not a guaranteed backup event; users
+must keep device backup enabled and retain the same application identity and
+signing key.
 
 `ui/document_workspace.dart` owns modal workflows and dirty state. The screen
 captures snapshots and applies a loaded document only after validation and exit

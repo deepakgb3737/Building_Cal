@@ -15,8 +15,32 @@ class _BlankPainter extends CustomPainter {
 }
 
 void main() {
+  test('Room diagram measurements follow entered geometry and mirrored edges',
+      () {
+    for (final shape in PvcShape.values) {
+      for (final corner in ['tr', 'tl', 'br', 'bl']) {
+        final values = pvcDefaults(shape);
+        final room = buildPvcRoom(shape, values, corner: corner);
+        final painter = PvcShapePreviewPainter(room, null);
+        for (final field in pvcDimensions(shape)) {
+          final value = values[field.key]!;
+          expect(painter.labelText(field.key),
+              '${field.key} · ${value.isEmpty ? '5' : value.replaceFirst(RegExp(r'\.0$'), '')} ft');
+        }
+      }
+    }
+    final first =
+        buildPvcRoom(PvcShape.rectangle, {'A': '21.39', 'B': '10.70'});
+    final second = buildPvcRoom(PvcShape.rectangle, {'A': '22', 'B': '10.70'});
+    expect(PvcShapePreviewPainter(first, null).labelText('A'), 'A · 21.39 ft');
+    expect(PvcShapePreviewPainter(first, null).labelText('B'), 'B · 10.7 ft');
+    expect(PvcShapePreviewPainter(second, null).labelText('A'), 'A · 22 ft');
+    expect(PvcShapePreviewPainter(second, null, thumbnail: true).labelText('A'),
+        'A');
+  });
   for (final shape in PvcShape.values) {
-    testWidgets('${shape.label}: input diagram stays compact', (t) async {
+    testWidgets('${shape.label}: full measurement diagram stays readable',
+        (t) async {
       for (final size in [const Size(320, 700), const Size(740, 360)]) {
         t.view.physicalSize = size;
         t.view.devicePixelRatio = 1;
@@ -28,21 +52,21 @@ void main() {
                 body: PvcShapePreview(
                     room: buildPvcRoom(shape, pvcDefaults(shape))))));
         final preview = find.byType(CustomPaint).last;
-        expect(t.getSize(preview).height, inInclusiveRange(110, 160));
+        expect(t.getSize(preview).height, inInclusiveRange(240, 280));
         expect(t.takeException(), isNull);
       }
     });
-    test('${shape.label}: preview letters stay visible and separate', () {
+    test('${shape.label}: measured labels stay visible and separate', () {
       for (final values in [
         pvcDefaults(shape),
         {...pvcDefaults(shape), 'A': '100'}
       ]) {
         final room = buildPvcRoom(shape, values);
         for (final size in [
-          const Size(248, 110),
-          const Size(248, 125),
-          const Size(288, 172),
-          const Size(708, 125)
+          const Size(200, 240),
+          const Size(248, 240),
+          const Size(288, 280),
+          const Size(708, 240)
         ]) {
           for (final scale in [1.0, 1.5]) {
             final painter =
@@ -50,12 +74,11 @@ void main() {
             final centers = painter.labelCenters(size);
             expect(centers.keys, room.edges.keys);
             final rects = <Rect>[];
-            for (final center in centers.values) {
-              final rect =
-                  Rect.fromCircle(center: center, radius: painter.radius);
+            for (final rect in painter.labelBounds(size).values) {
               expect((Offset.zero & size).contains(rect.topLeft), isTrue);
               expect((Offset.zero & size).contains(rect.bottomRight), isTrue);
-              expect(rects.any((r) => r.overlaps(rect)), isFalse);
+              expect(rects.any((r) => r.overlaps(rect)), isFalse,
+                  reason: '$values / $size / $scale: $rect overlaps $rects');
               rects.add(rect);
             }
             expect(

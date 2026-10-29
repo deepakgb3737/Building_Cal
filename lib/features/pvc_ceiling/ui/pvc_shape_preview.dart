@@ -17,27 +17,27 @@ class PvcShapePreview extends StatelessWidget {
   Widget build(BuildContext context) => LayoutBuilder(builder: (context, box) {
         final available = MediaQuery.sizeOf(context).height -
             MediaQuery.viewInsetsOf(context).bottom;
-        final maxHeight = (available * .22).clamp(125.0, 160.0);
+        final maxHeight = (available * .35).clamp(240.0, 280.0);
         final height =
-            thumbnail ? 88.0 : (box.maxWidth * .4).clamp(110.0, maxHeight);
+            thumbnail ? 88.0 : (box.maxWidth * .6).clamp(240.0, maxHeight);
         final textScale = MediaQuery.textScalerOf(context).scale(13) / 13;
         final bounds = pvcBounds(room.points);
         final alongLength = orientation == PvcOrientation.length;
         final start = alongLength ? bounds.x0 : bounds.y0;
         final run = alongLength ? bounds.width : bounds.height;
+        final painter = PvcShapePreviewPainter(room, active,
+            joint: joint,
+            orientation: orientation,
+            textScale: textScale,
+            thumbnail: thumbnail);
         return Semantics(
             label:
-                '${room.shape.label} dimension diagram. Letters match the input fields.',
+                '${room.shape.label} dimension diagram. Letters match the input fields. ${thumbnail ? '' : room.edges.keys.map(painter.labelText).join(', ')}',
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               SizedBox(
                   height: height,
                   width: double.infinity,
-                  child: CustomPaint(
-                      painter: PvcShapePreviewPainter(room, active,
-                          joint: joint,
-                          orientation: orientation,
-                          textScale: textScale,
-                          thumbnail: thumbnail))),
+                  child: CustomPaint(painter: painter)),
               if (joint != null)
                 Text(
                     'From ${alongLength ? "left" : "top"}: ${fmt(joint! - start)} ft · '
@@ -64,6 +64,39 @@ class PvcShapePreviewPainter extends CustomPainter {
   final PvcOrientation orientation;
   double get radius => (thumbnail ? 7 : 12) * textScale;
 
+  String labelText(String key) {
+    if (thumbnail) return key;
+    final edge = room.edges[key]!;
+    final a = room.points[edge.$1], b = room.points[edge.$2];
+    return '$key · ${fmt(math.sqrt(math.pow(b.x - a.x, 2) + math.pow(b.y - a.y, 2)))} ft';
+  }
+
+  TextPainter _label(String key) => TextPainter(
+      text: TextSpan(
+          text: labelText(key),
+          style: AppTypography.input.copyWith(
+              fontSize: (thumbnail ? 9 : 11) * textScale,
+              fontWeight: FontWeight.w700,
+              color: AppColors.white)),
+      textDirection: TextDirection.ltr)
+    ..layout();
+
+  Size _labelSize(String key) {
+    if (thumbnail) return Size.square(radius * 2);
+    final text = _label(key);
+    final size = Size(text.width + 12, math.max(radius * 2, text.height + 8));
+    text.dispose();
+    return size;
+  }
+
+  Map<String, Rect> labelBounds(Size size) => {
+        for (final entry in labelCenters(size).entries)
+          entry.key: Rect.fromCenter(
+              center: entry.value,
+              width: _labelSize(entry.key).width,
+              height: _labelSize(entry.key).height)
+      };
+
   List<Offset> _points(Size size, [List<PvcPoint>? source]) {
     final b = pvcBounds(room.points), padding = radius + (thumbnail ? 12 : 20);
     final scale = math.max(
@@ -81,8 +114,12 @@ class PvcShapePreviewPainter extends CustomPainter {
     final points = _points(size), path = Path()..addPolygon(points, true);
     final placed = <String, Offset>{};
     final occupied = <Rect>[];
-    final safe = (Offset.zero & size).deflate(radius + 3);
     for (final entry in room.edges.entries) {
+      final label = _labelSize(entry.key);
+      final safe = Rect.fromLTRB(label.width / 2 + 3, label.height / 2 + 3,
+          size.width - label.width / 2 - 3, size.height - label.height / 2 - 3);
+      Rect box(Offset center) => Rect.fromCenter(
+          center: center, width: label.width + 4, height: label.height + 4);
       final a = points[entry.value.$1],
           b = points[entry.value.$2],
           delta = b - a;
@@ -95,20 +132,34 @@ class PvcShapePreviewPainter extends CustomPainter {
         for (final distance in [radius + 8, radius + 24, radius + 40])
           for (final shift in [0.0, -28.0, 28.0, -56.0, 56.0])
             mid + normal * distance + tangent * shift,
-        for (var y = safe.top; y <= safe.bottom; y += radius * 2 + 8)
-          for (var x = safe.left; x <= safe.right; x += radius * 2 + 8)
+        for (var y = safe.top;
+            y <= safe.bottom;
+            y += thumbnail ? radius * 2 + 8 : 8)
+          for (var x = safe.left;
+              x <= safe.right;
+              x += thumbnail ? radius * 2 + 8 : 8)
             Offset(x, y),
       ];
       candidates.sort((a, b) =>
           (a - mid).distanceSquared.compareTo((b - mid).distanceSquared));
       bool clear(Offset p) =>
-          safe.contains(p) &&
-          !occupied.any((r) =>
-              r.overlaps(Rect.fromCircle(center: p, radius: radius + 3)));
+          safe.contains(p) && !occupied.any((r) => r.overlaps(box(p)));
       bool outsideWalls(Offset p) {
-        if (path.contains(p)) return false;
+        final bounds = box(p);
+        if (path.contains(p) ||
+            [
+              bounds.topLeft,
+              bounds.topRight,
+              bounds.bottomLeft,
+              bounds.bottomRight
+            ].any(path.contains)) {
+          return false;
+        }
         for (var i = 0; i < points.length; i++) {
           final a = points[i], d = points[(i + 1) % points.length] - a;
+          if (Rect.fromPoints(a, a + d).inflate(3).overlaps(bounds)) {
+            return false;
+          }
           final t = d.distanceSquared < .001
               ? 0.0
               : (((p - a).dx * d.dx + (p - a).dy * d.dy) / d.distanceSquared)
@@ -118,11 +169,29 @@ class PvcShapePreviewPainter extends CustomPainter {
         return true;
       }
 
-      final center = candidates.where(clear).where(outsideWalls).firstOrNull ??
-          candidates.where(clear).firstOrNull ??
+      final available = candidates.where(clear).toList();
+      if (available.isEmpty && !thumbnail) {
+        // Crowded guides use ordered callouts rather than overlapping labels.
+        final edges = room.edges.entries.toList()
+          ..sort((a, b) => (points[a.value.$1].dy + points[a.value.$2].dy)
+              .compareTo(points[b.value.$1].dy + points[b.value.$2].dy));
+        final rowHeight =
+            edges.map((edge) => _labelSize(edge.key).height).reduce(math.max) +
+                6;
+        final callouts = {
+          for (var i = 0; i < edges.length; i++)
+            edges[i].key: Offset(
+                size.width / 2,
+                (size.height - rowHeight * edges.length) / 2 +
+                    rowHeight * (i + .5))
+        };
+        return {for (final key in room.edges.keys) key: callouts[key]!};
+      }
+      final center = available.where(outsideWalls).firstOrNull ??
+          available.firstOrNull ??
           Offset(mid.dx.clamp(safe.left, safe.right),
               mid.dy.clamp(safe.top, safe.bottom));
-      occupied.add(Rect.fromCircle(center: center, radius: radius + 3));
+      occupied.add(box(center));
       placed[entry.key] = center;
     }
     return placed;
@@ -147,26 +216,23 @@ class PvcShapePreviewPainter extends CustomPainter {
       _dashLine(canvas, ends[0], ends[1], _stroke(AppColors.pvcJoint, 2));
       canvas.restore();
     }
-    final labels = labelCenters(size);
+    final labels = labelBounds(size);
     for (final entry in room.edges.entries) {
       final a = points[entry.value.$1],
           b = points[entry.value.$2],
           mid = (a + b) / 2;
-      final selected = entry.key == active, center = labels[entry.key]!;
+      final selected = entry.key == active, bounds = labels[entry.key]!;
+      final center = bounds.center;
       final color = selected ? AppColors.primary : AppColors.ink;
       canvas.drawLine(a, b, _stroke(color, selected ? 5 : 3));
       if ((center - mid).distance > radius + 8.5) {
         canvas.drawLine(mid, center, _stroke(AppColors.muted, 1));
       }
-      canvas.drawCircle(center, radius, _fill(color));
-      _text(
-          canvas,
-          entry.key,
-          center.dx,
-          center.dy + (thumbnail ? 3 : 4.5) * textScale,
-          (thumbnail ? 9 : 13) * textScale,
-          weight: FontWeight.w700,
-          color: AppColors.white);
+      canvas.drawRRect(RRect.fromRectAndRadius(bounds, Radius.circular(radius)),
+          _fill(color));
+      final text = _label(entry.key);
+      text.paint(canvas, center - Offset(text.width / 2, text.height / 2));
+      text.dispose();
     }
   }
 

@@ -9,7 +9,7 @@ Android, macOS and web platform folders included.
 | Tool | What it does |
 | --- | --- |
 | Grid Ceiling | Calculates rectangular-room grid placement, tile purchases, T sections and wall angles; shows material estimates and 2D/3D layouts. |
-| PVC Ceiling | Plans PVC panels for rectangular and supported irregular rooms, prioritizing fewer joints before stock savings, with cutting quantities and layout previews. |
+| PVC Ceiling | Plans PVC panels for rectangular and supported irregular rooms, prioritizing fewer joints before stock savings, with cutting quantities, layout previews and named local projects to save, reopen or delete. |
 | EasyFloor | Draws and edits connected floor-plan walls with dimensions, presets, notes, snapping, tape measurement and proposed dashed walls. Supports local drawing documents. |
 | Unit Converter | Converts lengths between supported metric and imperial units, updating all units together. |
 | Area Converter | Converts square measurements between supported metric and imperial units. |
@@ -103,3 +103,17 @@ The application was developed using AI-assisted development under the direction 
 Licensed under the [MIT License](LICENSE). Third-party code and assets retain
 their own authorship and licences. See [NOTICE.md](NOTICE.md); review supplied
 asset distribution rights before publishing publicly.
+
+EasyFloor includes a simple **Door** tool: place and drag door symbols, set width,
+rotation, hinge/swing side and opening angle, or open/close them directly. Doors
+support Undo/Redo and existing document Save/Open. They are independent symbols,
+not structural wall openings. See [Door tool](docs/EASYFLOOR_DOORS.md).
+
+EasyFloor can share a clean, dimensioned PDF using **Documents > Share PDF**.
+New EasyFloor plans default to feet; reopening saved plans preserves their chosen units.
+The full plan, notes and door symbols are fitted onto A4 independently of screen
+zoom. See [PDF sharing](docs/EASYFLOOR_PDF.md) for format and scale limitations.
+
+PVC Ceiling also supports **PVC projects > Share PDF** after calculation. It uses
+the same PDF engine for a multi-page buy list, room/layout diagrams, settings,
+cutting instructions and complete installation row schedule.

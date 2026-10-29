@@ -12,10 +12,17 @@ external void _set(JSString key, JSString value);
 @JS('localStorage.removeItem')
 external void _remove(JSString key);
 
-DocumentStorage createStorage() => _BrowserStorage();
+DocumentStorage createStorage({String? namespace}) =>
+    _BrowserStorage(namespace);
 
 class _BrowserStorage implements DocumentStorage {
-  static const _prefix = 'buildcalc.easyfloor.';
+  _BrowserStorage(String? namespace)
+      : _prefix = namespace == null
+            ? 'buildcalc.easyfloor.'
+            : 'buildcalc.$namespace.' {
+    if (namespace != null) validateDocumentId(namespace);
+  }
+  final String _prefix;
   @override
   Future<Map<String, String>> readAll() async {
     final result = <String, String>{};

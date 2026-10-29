@@ -147,6 +147,11 @@ void main() {
       addTearDown(t.view.resetDevicePixelRatio);
       await t.pumpWidget(
           MaterialApp(theme: AppTheme.light, home: const PvcCeilingScreen()));
+      InputDecoration directionDecoration() => t
+          .widget<DropdownButtonFormField<PvcOrientation>>(
+              find.byKey(const ValueKey('pvcOrientation')))
+          .decoration;
+      expect(directionDecoration().helperText, isNull);
       Future<void> choose(String key, String text) async {
         final finder = find.byKey(ValueKey(key));
         await t.ensureVisible(finder);
@@ -158,8 +163,16 @@ void main() {
       }
 
       await choose('pvcJointMode', 'Centre of room');
+      expect(directionDecoration().helperText,
+          'Choose A or B for the joint line.');
+      expect(directionDecoration().enabledBorder,
+          AppTheme.light.inputDecorationTheme.focusedBorder);
+      expect(t.getRect(find.byKey(const ValueKey('pvcOrientation'))).top,
+          greaterThanOrEqualTo(0));
       expect(find.textContaining('Choose length (A)'), findsOneWidget);
       await choose('pvcOrientation', 'Along length · A direction');
+      expect(
+          directionDecoration().helperText, 'Joint line follows A (length).');
       await t.enterText(find.byType(TextFormField).at(0), '21');
       await t.enterText(find.byType(TextFormField).at(1), '8');
       final calculate = find.widgetWithText(FilledButton, 'Calculate');
@@ -180,6 +193,8 @@ void main() {
       expect(find.text('From left: 10.5 ft · From right: 10.5 ft'),
           findsOneWidget);
       await choose('pvcJointMode', 'Custom joint position');
+      expect(
+          directionDecoration().helperText, 'Joint line follows A (length).');
       await choose('pvcJointSide', 'Right side');
       await t.ensureVisible(find.byKey(const ValueKey('pvcJointDistance')));
       await t.enterText(
@@ -198,7 +213,11 @@ void main() {
       await t.pumpAndSettle();
       expect(find.text('From left: 10 ft · From right: 11 ft'), findsOneWidget);
       expect(t.takeException(), isNull);
+      await choose('pvcOrientation', 'Across width · B direction');
+      expect(directionDecoration().helperText, 'Joint line follows B (width).');
       await choose('pvcJointMode', 'Auto · Existing optimization');
+      expect(directionDecoration().helperText, isNull);
+      expect(directionDecoration().enabledBorder, isNull);
       expect(find.byKey(const ValueKey('pvcJointDistance')), findsNothing);
     });
   }

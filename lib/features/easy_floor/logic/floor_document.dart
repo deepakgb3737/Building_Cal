@@ -4,10 +4,11 @@ import 'drawing_annotations.dart';
 import 'document_json.dart';
 import 'wall_network.dart';
 import 'drawing_camera.dart';
+import 'drawing_doors.dart';
 
 class DocumentSettings {
   const DocumentSettings(
-      {this.unit = DrawingUnit.metres,
+      {this.unit = DrawingUnit.feet,
       this.snapping = true,
       this.axes = true,
       this.recognition = true,
@@ -79,14 +80,18 @@ class DocumentSettings {
 }
 
 class FloorDocument {
-  const FloorDocument(this.walls, this.annotations, this.settings);
+  FloorDocument(this.walls, this.annotations, this.settings,
+      {DrawingDoors? doors})
+      : doors = doors ?? DrawingDoors();
   final WallNetwork walls;
   final DrawingAnnotations annotations;
   final DocumentSettings settings;
+  final DrawingDoors doors;
   Map<String, Object?> toJson() => {
         'walls': walls.toJson(),
         'annotations': annotations.toJson(),
-        'settings': settings.toJson()
+        'settings': settings.toJson(),
+        'doors': doors.toJson()
       };
   static FloorDocument fromJson(Object? value) {
     final d = jsonObject(value);
@@ -94,7 +99,8 @@ class FloorDocument {
       return FloorDocument(
           WallNetwork.fromJson(d['walls']),
           DrawingAnnotations.fromJson(d['annotations']),
-          DocumentSettings.fromJson(d['settings']));
+          DocumentSettings.fromJson(d['settings']),
+          doors: DrawingDoors.fromJson(d['doors']));
     } catch (e) {
       throw FormatException('Invalid floor plan: $e');
     }

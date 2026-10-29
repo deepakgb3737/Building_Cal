@@ -55,6 +55,8 @@ class DrawingPainter extends CustomPainter {
       this.guides = const [],
       this.guideOpacity = .5,
       this.showAllMeasurements = false,
+      this.showGrid = true,
+      this.showCornerHandles = true,
       this.labelOffsets,
       this.finger,
       this.moveOffset,
@@ -85,6 +87,7 @@ class DrawingPainter extends CustomPainter {
   final List<DrawingGuide> guides;
   final double guideOpacity;
   final bool showAllMeasurements;
+  final bool showGrid, showCornerHandles;
   final bool navigationActive;
   final bool editingCorner;
   final bool editingActive;
@@ -150,18 +153,20 @@ class DrawingPainter extends CustomPainter {
       }
     }
 
-    if (gap / 5 >= 14) {
+    if (showGrid && gap / 5 >= 14) {
       gridLines(
           gap / 5,
           Paint()
             ..color = AppColors.drawingGridMinor
             ..strokeWidth = .5);
     }
-    gridLines(
-        gap,
-        Paint()
-          ..color = AppColors.drawingGridMajor
-          ..strokeWidth = .75);
+    if (showGrid) {
+      gridLines(
+          gap,
+          Paint()
+            ..color = AppColors.drawingGridMajor
+            ..strokeWidth = .75);
+    }
     final occupied = <Rect>[
       ...labelObstacles.map((r) => r.inflate(4)),
       ...?interfaceObstacles?.call().map((r) => r.inflate(4)),
@@ -345,7 +350,9 @@ class DrawingPainter extends CustomPainter {
             priority: MeasurementLabelPriority.secondary);
       }
     }
-    for (final entry in model.corners.entries) {
+    for (final entry in showCornerHandles
+        ? model.corners.entries
+        : <MapEntry<int, DrawingPoint>>[]) {
       canvas.drawCircle(
           screen(entry.value),
           entry.key == selectedCorner || highlightedCorners.contains(entry.key)
